@@ -43,3 +43,11 @@ async def subir_incapacidad(cedula: str = Form(...), empresa: str = Form(...), a
         body = f"⚠️ No se encontró la cédula {cedula} en la base de empleados. Empresa reportada: {empresa}. Consecutivo: {consecutivo}."
         send_email("xoblaxbaezaospino@gmail.com", "Alerta: Cédula no encontrada", body)
         return {"status": "error", "mensaje": "Cédula no encontrada en el Excel", "consecutivo": consecutivo}
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def root():
+    return {"message": "✅ API funcionando en Render"}
+
