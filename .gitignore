@@ -1,0 +1,6 @@
+# Ignorar credencial de Google
+incapacidades-sa.json
+
+# Python
+__pycache__/
+*.pyc
