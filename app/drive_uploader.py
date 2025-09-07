@@ -3,7 +3,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-SERVICE_ACCOUNT_FILE = Path("incapacidades-sa.json")  # ← tu archivo
+SERVICE_ACCOUNT_FILE = Path("/etc/secrets/incapacidades-sa.json")  # ← tu archivo
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 BASE_FOLDER_NAME = "INCAPACIDADES"
 
