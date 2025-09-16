@@ -64,8 +64,9 @@ def obtener_empleado(cedula: str):
 @app.post("/subir-incapacidad/")
 async def subir_incapacidad(
     cedula: str = Form(...),
-    empresa: str = Form(...),
     tipo: str = Form(...),
+    email: str = Form(...),
+    telefono: str = Form(...),
     archivos: List[UploadFile] = File(...)
 ):
     try:
@@ -85,29 +86,48 @@ async def subir_incapacidad(
                 shutil.copyfileobj(archivo.file, tmp)
                 tmp_path = Path(tmp.name)
             try:
-                link = upload_to_drive(tmp_path, empresa.strip().upper(), cedula, tipo)
+                empresa_destino = empleado.iloc[0]["empresa"] if empleado is not None and not empleado.empty else "OTRA_EMPRESA"
+                link = upload_to_drive(tmp_path, empresa_destino, cedula, tipo)
                 links_archivos.append(link)
             except Exception as e:
                 tmp_path.unlink(missing_ok=True)
                 return JSONResponse(status_code=500, content={"error": f"Error subiendo archivo {archivo.filename}: {e}"})
             tmp_path.unlink()
 
+    # Si el empleado está en el Excel, manda correo a él y copia
     if empleado is not None and not empleado.empty:
         nombre = empleado.iloc[0]["nombre"]
         correo = empleado.iloc[0]["correo"]
         empresa_reg = empleado.iloc[0]["empresa"]
-        body = f"Hola {nombre}, se ha registrado tu incapacidad en {empresa_reg} con consecutivo {consecutivo}.\nArchivos:\n" + "\n".join(links_archivos or ['No aplica'])
+        body = (
+            f"Hola {nombre}, se ha registrado tu incapacidad en {empresa_reg} con consecutivo {consecutivo}.\n"
+            f"Archivos:\n" + "\n".join(links_archivos or ['No aplica']) +
+            f"\nCorreo de contacto: {email}\nTeléfono: {telefono}"
+        )
         sent, err = send_email(correo, "Registro de Incapacidad", body)
         sent2, err2 = send_email("xoblaxbaezaospino@gmail.com", "Copia Registro Incapacidad", body)
         if not sent or not sent2:
             return JSONResponse(status_code=500, content={"error": f"Error enviando correo: {err or err2}", "links_archivos": links_archivos})
-        return {"status": "ok", "mensaje": "Registro exitoso", "consecutivo": consecutivo, "links_archivos": links_archivos}
+        return {
+            "status": "ok",
+            "mensaje": "Registro exitoso",
+            "consecutivo": consecutivo,
+            "links_archivos": links_archivos
+        }
     else:
-        body = f"⚠️ Cédula {cedula} no encontrada. Empresa: {empresa}. Consecutivo: {consecutivo}."
+        # Si no está en Excel, manda solo copia
+        body = (
+            f"⚠️ Cédula {cedula} no encontrada. Consecutivo: {consecutivo}.\n"
+            f"Correo de contacto: {email}\nTeléfono: {telefono}"
+        )
         sent, err = send_email("xoblaxbaezaospino@gmail.com", "Alerta: Cédula no encontrada", body)
         if not sent:
             return JSONResponse(status_code=500, content={"error": f"Error enviando correo: {err}", "consecutivo": consecutivo})
-        return {"status": "error", "mensaje": "Cédula no encontrada en el Excel", "consecutivo": consecutivo}
+        return {
+            "status": "error",
+            "mensaje": "Cédula no encontrada en el Excel",
+            "consecutivo": consecutivo
+        }
 
 @app.get("/")
 def root():
