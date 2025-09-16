@@ -27,7 +27,7 @@ def send_email(to_email: str, subject: str, body: str):
     smtp_server = "smtp.gmail.com"
     smtp_port = 587
     smtp_user = "davidbaezaospino@gmail.com"
-    smtp_pass = "eona wjrl adih fjxr"
+    smtp_pass = "fmgn djcc xrav ujyf"
 
     msg = MIMEText(body, "plain")
     msg["Subject"] = subject
@@ -41,8 +41,10 @@ def send_email(to_email: str, subject: str, body: str):
         server.sendmail(from_email, [to_email], msg.as_string())
         server.quit()
         print(f"📧 Correo enviado a {to_email}")
+        return True, None
     except Exception as e:
         print(f"Error enviando correo: {e}")
+        return False, str(e)
 
 @app.get("/empleados/{cedula}")
 def obtener_empleado(cedula: str):
@@ -82,8 +84,12 @@ async def subir_incapacidad(
             with tempfile.NamedTemporaryFile(delete=False, suffix=sufijo) as tmp:
                 shutil.copyfileobj(archivo.file, tmp)
                 tmp_path = Path(tmp.name)
-            link = upload_to_drive(tmp_path, empresa.strip().upper(), cedula, tipo)
-            links_archivos.append(link)
+            try:
+                link = upload_to_drive(tmp_path, empresa.strip().upper(), cedula, tipo)
+                links_archivos.append(link)
+            except Exception as e:
+                tmp_path.unlink(missing_ok=True)
+                return JSONResponse(status_code=500, content={"error": f"Error subiendo archivo {archivo.filename}: {e}"})
             tmp_path.unlink()
 
     if empleado is not None and not empleado.empty:
@@ -91,12 +97,16 @@ async def subir_incapacidad(
         correo = empleado.iloc[0]["correo"]
         empresa_reg = empleado.iloc[0]["empresa"]
         body = f"Hola {nombre}, se ha registrado tu incapacidad en {empresa_reg} con consecutivo {consecutivo}.\nArchivos:\n" + "\n".join(links_archivos or ['No aplica'])
-        send_email(correo, "Registro de Incapacidad", body)
-        send_email("xoblaxbaezaospino@gmail.com", "Copia Registro Incapacidad", body)
+        sent, err = send_email(correo, "Registro de Incapacidad", body)
+        sent2, err2 = send_email("xoblaxbaezaospino@gmail.com", "Copia Registro Incapacidad", body)
+        if not sent or not sent2:
+            return JSONResponse(status_code=500, content={"error": f"Error enviando correo: {err or err2}", "links_archivos": links_archivos})
         return {"status": "ok", "mensaje": "Registro exitoso", "consecutivo": consecutivo, "links_archivos": links_archivos}
     else:
         body = f"⚠️ Cédula {cedula} no encontrada. Empresa: {empresa}. Consecutivo: {consecutivo}."
-        send_email("xoblaxbaezaospino@gmail.com", "Alerta: Cédula no encontrada", body)
+        sent, err = send_email("xoblaxbaezaospino@gmail.com", "Alerta: Cédula no encontrada", body)
+        if not sent:
+            return JSONResponse(status_code=500, content={"error": f"Error enviando correo: {err}", "consecutivo": consecutivo})
         return {"status": "error", "mensaje": "Cédula no encontrada en el Excel", "consecutivo": consecutivo}
 
 @app.get("/")
