@@ -1,32 +1,24 @@
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-import os
+from google.oauth2.credentials import Credentials
 from pathlib import Path
-from datetime import datetime
+import os
 
-# Lista de nombres de meses en español
-MESES_ES = [
-    "", "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
-    "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"
-]
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
+# Usa las variables de entorno de Render
+CLIENT_ID = os.environ["GOOGLE_CLIENT_ID"]
+CLIENT_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
+REFRESH_TOKEN = os.environ["GOOGLE_REFRESH_TOKEN"]
+SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
-# Detecta si estás en Render o local
-def get_credentials_path():
-    if Path("/etc/secrets/credentials.json").exists():
-        return "/etc/secrets/credentials.json"
-    return "./credentials.json"
-
-def get_user_service():
-    # Aquí NO usamos token.pickle, el flujo OAuth debe ser gestionado por el backend
-    creds = None
-    credentials_path = get_credentials_path()
-    # Si tienes un mecanismo para guardar y refrescar el token en la base de datos, úsalo aquí.
-    # Si quieres que el usuario autorice por navegador, descomenta las líneas abajo.
-    flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
-    creds = flow.run_local_server(port=0)
+def get_drive_service():
+    creds = Credentials(
+        None,
+        refresh_token=REFRESH_TOKEN,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=CLIENT_ID,
+        client_secret=CLIENT_SECRET,
+        scopes=SCOPES,
+    )
     return build('drive', 'v3', credentials=creds)
 
 def get_or_create_folder(service, name, parent_id=None):
@@ -55,24 +47,15 @@ def get_or_create_folder(service, name, parent_id=None):
     return folder.get('id')
 
 def upload_to_drive(file_path: Path, empresa: str, cedula: str, tipo: str = "INCAPACIDADES"):
-    service = get_user_service()
-
-    # 1. Carpeta raíz
+    service = get_drive_service()
+    # 1. Carpeta raíz por tipo
     root_folder_id = get_or_create_folder(service, tipo.upper().strip())
-
     # 2. Subcarpeta por empresa
     empresa_folder_id = get_or_create_folder(service, empresa.upper().strip(), root_folder_id)
-
-    # 3. Subcarpeta por mes y año actual
-    now = datetime.now()
-    nombre_mes_es = MESES_ES[now.month]
-    mes_folder_name = f"{tipo.upper().strip()} {nombre_mes_es} {now.year}"
-    mes_folder_id = get_or_create_folder(service, mes_folder_name, empresa_folder_id)
-
-    # 4. Sube archivo
+    # 3. Sube archivo
     file_metadata = {
         'name': f"{cedula}_{file_path.name}",
-        'parents': [mes_folder_id]
+        'parents': [empresa_folder_id]
     }
     media = MediaFileUpload(str(file_path), resumable=True)
     uploaded = service.files().create(
@@ -81,13 +64,3 @@ def upload_to_drive(file_path: Path, empresa: str, cedula: str, tipo: str = "INC
         fields='webViewLink'
     ).execute()
     return uploaded.get('webViewLink')
-
-# Ejemplo de uso:
-if __name__ == "__main__":
-    # Cambia estos valores por los datos reales
-    path_al_archivo = Path("actividad5 (1).pdf")   # Cambia a la ruta real de tu archivo
-    empresa = "MiEmpresa"                         # Cambia por el nombre de la empresa
-    cedula = "123456789"                          # Cambia por la cédula del usuario
-
-    link = upload_to_drive(path_al_archivo, empresa, cedula)
-    print("Archivo subido. Link de visualización:", link)
