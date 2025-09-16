@@ -3,7 +3,6 @@ from googleapiclient.http import MediaFileUpload
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 import os
-import pickle
 from pathlib import Path
 from datetime import datetime
 
@@ -14,20 +13,20 @@ MESES_ES = [
 ]
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
+# Detecta si estás en Render o local
+def get_credentials_path():
+    if Path("/etc/secrets/credentials.json").exists():
+        return "/etc/secrets/credentials.json"
+    return "./credentials.json"
+
 def get_user_service():
+    # Aquí NO usamos token.pickle, el flujo OAuth debe ser gestionado por el backend
     creds = None
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
-            creds = pickle.load(token)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open('token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
+    credentials_path = get_credentials_path()
+    # Si tienes un mecanismo para guardar y refrescar el token en la base de datos, úsalo aquí.
+    # Si quieres que el usuario autorice por navegador, descomenta las líneas abajo.
+    flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
+    creds = flow.run_local_server(port=0)
     return build('drive', 'v3', credentials=creds)
 
 def get_or_create_folder(service, name, parent_id=None):
