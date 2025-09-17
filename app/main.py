@@ -37,9 +37,10 @@ def send_html_email(to_email: str, subject: str, html_body: str, text_body: str 
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
 
+    # CONFIGURACIÓN DE CORREO - Usando tu Gmail actual
     from_email = os.environ.get("SMTP_EMAIL", "davidbaezaospino@gmail.com")
-    smtp_server = "smtp.gmail.com"
-    smtp_port = 587
+    smtp_server = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
+    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
     smtp_user = os.environ.get("SMTP_USER", "davidbaezaospino@gmail.com")
     smtp_pass = os.environ.get("SMTP_PASS", "fmgn djcc xrav ujyf")
 
@@ -104,7 +105,7 @@ async def subir_incapacidad(
     try:
         empresa_destino = empleado.iloc[0]["empresa"] if empleado is not None and not empleado.empty else "OTRA_EMPRESA"
         
-        # Combinar todos los archivos en un solo PDF
+        # Combinar todos los archivos en un solo PDF (SIN portada)
         pdf_final_path, original_filenames = await merge_pdfs_from_uploads(archivos, cedula, tipo)
         
         # Subir el PDF combinado a Drive
@@ -155,22 +156,28 @@ async def subir_incapacidad(
         "Trabajando para ayudarte"
         """
         
-        # Enviar correo al empleado
-        sent_empleado, err1 = send_html_email(
-            correo_empleado, 
-            f"Confirmación Recepción Incapacidad - {consecutivo}",
-            html_empleado,
-            text_empleado
-        )
+        # Lista de correos para enviar (evitar duplicados)
+        emails_to_send = []
+        if correo_empleado:
+            emails_to_send.append(correo_empleado)
+        if email and email.lower() != correo_empleado.lower():
+            emails_to_send.append(email)
         
-        # También enviar confirmación al email del formulario si es diferente
-        if email.lower() != correo_empleado.lower():
-            sent_form_email, err1_form = send_html_email(
-                email,
+        # Enviar correo a todos los emails
+        envios_exitosos = 0
+        errores_envio = []
+        
+        for email_dest in emails_to_send:
+            sent, err = send_html_email(
+                email_dest, 
                 f"Confirmación Recepción Incapacidad - {consecutivo}",
                 html_empleado,
                 text_empleado
             )
+            if sent:
+                envios_exitosos += 1
+            else:
+                errores_envio.append(f"Error enviando a {email_dest}: {err}")
         
         # Enviar copia a supervisión
         html_supervision = get_alert_template(
@@ -185,25 +192,26 @@ async def subir_incapacidad(
             telefono=telefono
         )
         
-        sent_supervision, err2 = send_html_email(
+        sent_supervision, err_supervision = send_html_email(
             "xoblaxbaezaospino@gmail.com", 
             f"Copia Registro Incapacidad - {consecutivo} - {empresa_reg}",
             html_supervision
         )
         
-        if not sent_empleado or not sent_supervision:
+        if envios_exitosos == 0 or not sent_supervision:
             return JSONResponse(status_code=500, content={
-                "error": f"Error enviando correos: {err1 or err2}", 
+                "error": f"Errores en envío de correos: {'; '.join(errores_envio)} | Supervisión: {err_supervision}", 
                 "link_pdf": link_pdf,
                 "consecutivo": consecutivo
             })
             
         return {
             "status": "ok",
-            "mensaje": "Registro exitoso y correos enviados",
+            "mensaje": f"Registro exitoso. Correos enviados a {envios_exitosos} destinatarios",
             "consecutivo": consecutivo,
             "link_pdf": link_pdf,
-            "archivos_combinados": len(original_filenames)
+            "archivos_combinados": len(original_filenames),
+            "correos_enviados": emails_to_send
         }
     
     else:
@@ -242,29 +250,30 @@ async def subir_incapacidad(
         """
         
         # Enviar confirmación al solicitante
-        send_html_email(
+        sent_solicitante, err_sol = send_html_email(
             email,
             f"Confirmación Recepción Documentación - {consecutivo}",
             html_confirmacion_no_registrado
         )
         
         # Enviar alerta a supervisión
-        sent_alerta, err = send_html_email(
+        sent_alerta, err_alert = send_html_email(
             "xoblaxbaezaospino@gmail.com", 
             f"⚠️ ALERTA: Cédula no encontrada - {consecutivo}",
             html_alerta
         )
         
-        if not sent_alerta:
+        if not sent_alerta or not sent_solicitante:
             return JSONResponse(status_code=500, content={
-                "error": f"Error enviando alerta: {err}", 
+                "error": f"Error enviando correos - Alerta: {err_alert} | Solicitante: {err_sol}", 
                 "consecutivo": consecutivo
             })
             
         return {
             "status": "warning",
             "mensaje": "Cédula no encontrada - Documentación recibida para revisión",
-            "consecutivo": consecutivo
+            "consecutivo": consecutivo,
+            "correos_enviados": [email]
         }
 
 @app.get("/")
