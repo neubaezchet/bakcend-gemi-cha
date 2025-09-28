@@ -6,10 +6,10 @@ from google.oauth2.credentials import Credentials
 from pathlib import Path
 
 # Variables de entorno necesarias
-CLIENT_ID = os.environ["GOOGLE_CLIENT_ID"]
-CLIENT_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
-REFRESH_TOKEN = os.environ["GOOGLE_REFRESH_TOKEN"]
-REDIRECT_URI = os.environ["GOOGLE_REDIRECT_URI"]
+CLIENT_ID = os.environ["680515257259-9bvnl3cu8cgpit0oak7ljrjvdh8q2rmb.apps.googleusercontent.com"]
+CLIENT_SECRET = os.environ["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"]
+REFRESH_TOKEN = os.environ["1//01CZAJ78P9YPCCgYIARAAGAESNwF-L9Irb3RtDjTvPna-m3BY3wS4aJ0BDnbyfbhsiImkZ6fAU21SjJvZFJMXBJCU5s7bCg8_BlA"]
+REDIRECT_URI = os.environ["https://bakcend-gemi-cha-2.onrender.com/auth/callback"]
 
 def get_authenticated_service():
     """Crea el servicio autenticado de Google Drive"""
