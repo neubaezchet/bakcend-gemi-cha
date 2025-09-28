@@ -121,7 +121,7 @@ def upload_to_drive(file_path: Path, empresa: str, cedula: str, tipo: str, conse
         raise Exception(f"Error subiendo archivo a Drive: {str(e)}")
 
 def get_folder_link(empresa: str) -> str:
-    """Obtiene el link de la carpeta de una empresa especifica"""
+    """Obtiene el link de la carpeta de una empresa especÃ­fica"""
     try:
         service = get_authenticated_service()
         
