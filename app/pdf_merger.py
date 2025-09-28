@@ -9,11 +9,11 @@ import io
 
 async def merge_pdfs_from_uploads(archivos: List[UploadFile], cedula: str, tipo: str) -> Tuple[Path, List[str]]:
     """
-    Combina mÃºltiples archivos (PDF, imÃ¡genes) en un solo PDF SIN portada
+    Combina múltiples archivos (PDF, imágenes) en un solo PDF SIN portada
     
     Args:
         archivos: Lista de archivos subidos
-        cedula: CÃ©dula del empleado
+        cedula: Cédula del empleado
         tipo: Tipo de incapacidad
         
     Returns:
@@ -40,10 +40,10 @@ async def merge_pdfs_from_uploads(archivos: List[UploadFile], cedula: str, tipo:
                 temp_path = Path(tmp.name)
                 temp_files.append(temp_path)
             
-            # Resetear el archivo para prÃ³xima lectura si es necesario
+            # Resetear el archivo para próxima lectura si es necesario
             archivo.file.seek(0)
             
-            # Procesar segÃºn el tipo de archivo
+            # Procesar según el tipo de archivo
             file_extension = Path(archivo.filename).suffix.lower()
             
             if file_extension == '.pdf':
@@ -60,13 +60,13 @@ async def merge_pdfs_from_uploads(archivos: List[UploadFile], cedula: str, tipo:
                     img_pdf.close()
                     
             elif file_extension in ['.doc', '.docx']:
-                # Para documentos Word, crear una pÃ¡gina indicativa
+                # Para documentos Word, crear una página indicativa
                 page = pdf_output.new_page()
                 text = f"Documento Word incluido:\n{archivo.filename}\n\nNota: Para ver el contenido completo, abrir el archivo original."
                 page.insert_text((50, 50), text, fontsize=12)
                 
             else:
-                # Para otros tipos de archivo, crear pÃ¡gina informativa
+                # Para otros tipos de archivo, crear página informativa
                 page = pdf_output.new_page()
                 text = f"Archivo adjunto:\n{archivo.filename}\n\nTipo: {file_extension}\nNota: Archivo no soportado para vista previa."
                 page.insert_text((50, 50), text, fontsize=12)
