@@ -3,7 +3,7 @@ from fastapi import FastAPI, UploadFile, Form, File
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
-import os, uuid, shutil, tempfile, logging, sys
+import os, uuid, shutil, tempfile, logging, sys, traceback
 from pathlib import Path
 from datetime import datetime, date
 import calendar
@@ -12,6 +12,9 @@ from app.pdf_merger import merge_pdfs_from_uploads
 from app.email_templates import get_confirmation_template, get_alert_template
 from app.whatsapp_service import WhatsAppService
 from app.simple_tracking import SimpleTrackingSystem
+
+# IMPORTAR EL NUEVO SISTEMA DE EMAILS
+from app.email_sender import email_service
 
 # Configurar logging para debug
 logging.basicConfig(level=logging.INFO)
@@ -40,87 +43,6 @@ def get_current_quinzena():
         return f"primera quincena de {mes_nombre}"
     else:
         return f"segunda quincena de {mes_nombre}"
-
-def send_html_email(to_email: str, subject: str, html_body: str, text_body: str = None):
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-
-    print(f"=== ENVIANDO EMAIL ===")
-    print(f"TO: {to_email}")
-    print(f"SUBJECT: {subject}")
-
-    # Configuración SMTP con valores hardcodeados para depuración
-    from_email = "davidbaezaospina@gmail.com"
-    smtp_server = "smtp.gmail.com"
-    smtp_port = 587
-    smtp_user = "davidbaezaospina@gmail.com"
-    smtp_pass = "bxav mvpy wmho tckg"
-
-    # También intentar leer de variables de entorno como fallback
-    from_email = os.environ.get("SMTP_EMAIL", from_email)
-    smtp_server = os.environ.get("SMTP_SERVER", smtp_server)
-    smtp_port = int(os.environ.get("SMTP_PORT", smtp_port))
-    smtp_user = os.environ.get("SMTP_USER", smtp_user)
-    smtp_pass = os.environ.get("SMTP_PASS", smtp_pass)
-
-    print(f"FROM: {from_email}")
-    print(f"SERVER: {smtp_server}:{smtp_port}")
-    print(f"USER: {smtp_user}")
-    print(f"PASS: {'*' * len(smtp_pass)}")
-
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = f"IncaNeurobaeza <{from_email}>"
-    msg["To"] = to_email
-
-    if text_body:
-        part1 = MIMEText(text_body, "plain", "utf-8")
-        msg.attach(part1)
-    
-    part2 = MIMEText(html_body, "html", "utf-8")
-    msg.attach(part2)
-
-    try:
-        print("Conectando a Gmail SMTP...")
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        print("Conexión establecida")
-        
-        server.starttls()
-        print("TLS activado")
-        
-        server.login(smtp_user, smtp_pass)
-        print("Login exitoso")
-        
-        server.sendmail(from_email, [to_email], msg.as_string())
-        server.quit()
-        print(f"✅ Email enviado exitosamente a {to_email}")
-        
-        return True, None
-        
-    except smtplib.SMTPAuthenticationError as e:
-        error_msg = f"Error de autenticación SMTP: {str(e)}"
-        print(f"❌ {error_msg}")
-        print("POSIBLES CAUSAS:")
-        print("1. Clave de aplicación incorrecta o expirada")
-        print("2. 2FA no activado en Gmail")
-        print("3. 'Acceso de apps menos seguras' deshabilitado")
-        return False, error_msg
-        
-    except smtplib.SMTPRecipientsRefused as e:
-        error_msg = f"Destinatario rechazado: {str(e)}"
-        print(f"❌ {error_msg}")
-        return False, error_msg
-        
-    except smtplib.SMTPServerDisconnected as e:
-        error_msg = f"Servidor desconectado: {str(e)}"
-        print(f"❌ {error_msg}")
-        return False, error_msg
-        
-    except Exception as e:
-        error_msg = f"Error general enviando email: {str(e)}"
-        print(f"❌ {error_msg}")
-        return False, error_msg
 
 @app.get("/empleados/{cedula}")
 def obtener_empleado(cedula: str):
@@ -252,13 +174,13 @@ async def subir_incapacidad(
         
         print(f"Emails destino: {emails_to_send}")
         
-        # Enviar correo a todos los emails
+        # Enviar correo a todos los emails usando el nuevo sistema
         envios_exitosos = 0
         errores_envio = []
         
         for email_dest in emails_to_send:
             print(f"--- Enviando email a: {email_dest} ---")
-            sent, err = send_html_email(
+            sent, err = email_service.send_html_email(
                 email_dest, 
                 f"Confirmacion Recepcion Incapacidad - {consecutivo}",
                 html_empleado,
@@ -286,7 +208,7 @@ async def subir_incapacidad(
             telefono=telefono
         )
         
-        sent_supervision, err_supervision = send_html_email(
+        sent_supervision, err_supervision = email_service.send_html_email(
             "xoblaxbaezaospina@gmail.com", 
             f"Copia Registro Incapacidad - {consecutivo} - {empresa_reg}",
             html_supervision
@@ -385,9 +307,9 @@ async def subir_incapacidad(
             quinzena=quinzena_actual
         )
         
-        # Enviar confirmación al solicitante
+        # Enviar confirmación al solicitante usando el nuevo sistema
         print(f"--- Enviando confirmacion a solicitante: {email} ---")
-        sent_solicitante, err_sol = send_html_email(
+        sent_solicitante, err_sol = email_service.send_html_email(
             email,
             f"Confirmacion Recepcion Documentacion - {consecutivo}",
             html_confirmacion_no_registrado
@@ -395,7 +317,7 @@ async def subir_incapacidad(
         
         # Enviar alerta a supervisión
         print("--- Enviando alerta a supervision ---")
-        sent_alerta, err_alert = send_html_email(
+        sent_alerta, err_alert = email_service.send_html_email(
             "xoblaxbaezaospina@gmail.com", 
             f"ALERTA: Cedula no encontrada - {consecutivo}",
             html_alerta
@@ -664,7 +586,7 @@ async def seguimiento_incapacidad(consecutivo: str):
                     <div class="contact-buttons">
                         <a href="https://wa.me/57{tracking_info.get('telefono', '').replace('57', '')}?text=Consulta sobre incapacidad {consecutivo}" 
                            class="contact-btn whatsapp-btn" target="_blank">WhatsApp</a>
-                        <a href="mailto:davidbaezaospina@gmail.com?subject=Consulta {consecutivo}" 
+                        <a href="mailto:davidbaezaospino@gmail.com?subject=Consulta {consecutivo}" 
                            class="contact-btn email-btn">Email</a>
                     </div>
                 </div>
@@ -682,23 +604,120 @@ async def seguimiento_incapacidad(consecutivo: str):
 def root():
     return {"message": "API IncaNeurobaeza funcionando - Trabajando para ayudarte"}
 
+# =================================
+# ENDPOINTS DE DEBUG Y TESTING
+# =================================
+
+@app.get("/debug-email-config")
+def debug_email_config():
+    """Endpoint para ver la configuración de email actual"""
+    config = {
+        "smtp_server": email_service.smtp_server,
+        "smtp_port": email_service.smtp_port,
+        "email": email_service.email,
+        "password_length": len(email_service.password),
+        "password_preview": email_service.password[:4] + "..." + email_service.password[-4:] if len(email_service.password) > 8 else "***",
+        "env_vars": {
+            "SMTP_EMAIL": os.environ.get("SMTP_EMAIL"),
+            "SMTP_PASS_exists": bool(os.environ.get("SMTP_PASS")),
+            "SMTP_PASS_length": len(os.environ.get("SMTP_PASS", "")),
+        }
+    }
+    return config
+
+@app.get("/test-smtp-connection")
+def test_smtp_connection():
+    """Endpoint para probar solo la conexión SMTP sin enviar email"""
+    try:
+        success, message = email_service.test_connection()
+        return {
+            "success": success,
+            "message": message,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        error_details = {
+            "success": False,
+            "message": f"Excepción no controlada: {str(e)}",
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc(),
+            "timestamp": datetime.now().isoformat()
+        }
+        print(f"❌ Error en test_smtp_connection: {error_details}")
+        return error_details
+
 @app.get("/test-email")
 def test_email():
-    """Endpoint para probar el envio de emails"""
-    print("=== PROBANDO CONFIGURACION EMAIL ===")
+    """Endpoint para probar el envio de emails con el nuevo sistema - CON DETALLES DE ERROR"""
+    print("=== PROBANDO NUEVO SISTEMA EMAIL ===")
     
     try:
-        sent, error = send_html_email(
+        sent, error = email_service.send_html_email(
             "davidbaezaospino@gmail.com",
-            "Test Email - IncaNeurobaeza",
-            "<h1>Email de Prueba</h1><p>Si recibes este mensaje, la configuracion esta funcionando correctamente.</p>",
-            "Email de Prueba - Si recibes este mensaje, la configuracion esta funcionando correctamente."
+            "Test Email - IncaNeurobaeza NUEVO SISTEMA",
+            "<h1>Email de Prueba - Nuevo Sistema</h1><p>Si recibes este mensaje, el nuevo sistema de emails está funcionando correctamente.</p>",
+            "Email de Prueba - Nuevo Sistema - Si recibes este mensaje, el sistema está funcionando correctamente."
         )
         
+        result = {
+            "success": sent,
+            "timestamp": datetime.now().isoformat(),
+            "email_config": {
+                "server": email_service.smtp_server,
+                "port": email_service.smtp_port,
+                "email": email_service.email,
+                "password_length": len(email_service.password)
+            }
+        }
+        
         if sent:
-            return {"status": "success", "message": "Email de prueba enviado exitosamente"}
+            result["message"] = "Email de prueba enviado exitosamente"
         else:
-            return {"status": "error", "message": f"Error enviando email: {error}"}
+            result["message"] = f"Error enviando email: {error}"
+            result["error_details"] = str(error)
+            
+        return result
             
     except Exception as e:
-        return {"status": "error", "message": f"Excepcion: {str(e)}"}
+        error_result = {
+            "success": False,
+            "message": f"Excepción no controlada: {str(e)}",
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc(),
+            "timestamp": datetime.now().isoformat(),
+            "email_config": {
+                "server": getattr(email_service, 'smtp_server', 'N/A'),
+                "port": getattr(email_service, 'smtp_port', 'N/A'),
+                "email": getattr(email_service, 'email', 'N/A'),
+                "password_length": len(getattr(email_service, 'password', ''))
+            }
+        }
+        print(f"❌ Error en test_email: {error_result}")
+        return error_result
+
+@app.get("/debug-all-env-vars")
+def debug_all_env_vars():
+    """Endpoint para ver todas las variables de entorno relacionadas con email"""
+    env_vars = {}
+    email_related = ['SMTP_EMAIL', 'SMTP_PASS', 'SMTP_SERVER', 'SMTP_PORT', 'SMTP_USER']
+    
+    for var in email_related:
+        value = os.environ.get(var)
+        if value:
+            if 'PASS' in var.upper():
+                env_vars[var] = f"***{value[-4:]}" if len(value) > 4 else "***"
+            else:
+                env_vars[var] = value
+        else:
+            env_vars[var] = None
+    
+    return {
+        "environment_variables": env_vars,
+        "total_env_vars": len(os.environ),
+        "python_path": os.environ.get('PYTHONPATH', 'Not set'),
+        "current_working_directory": os.getcwd()
+    }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

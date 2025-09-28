@@ -67,7 +67,7 @@ def upload_to_drive(file_path: Path, empresa: str, cedula: str, tipo: str, conse
         
         # Crear estructura de carpetas: Incapacidades / {Empresa} / {Ano}
         from datetime import datetime
-        ano_actual = str(datetime.now().year)  # CORREGIDO: cambiado de aÃ±o_actual
+        anio_actual = str(datetime.now().year)  # CORREGIDO: cambiado de año_actual
         
         # Carpeta principal "Incapacidades"
         main_folder_id = create_folder_if_not_exists(service, "Incapacidades")
@@ -76,7 +76,7 @@ def upload_to_drive(file_path: Path, empresa: str, cedula: str, tipo: str, conse
         empresa_folder_id = create_folder_if_not_exists(service, empresa, main_folder_id)
         
         # Carpeta del año dentro de la empresa
-        year_folder_id = create_folder_if_not_exists(service, ano_actual, empresa_folder_id)
+        year_folder_id = create_folder_if_not_exists(service, anio_actual, empresa_folder_id)
         
         # Nombre del archivo con formato: CONSECUTIVO_CEDULA_TIPO_FECHA.pdf
         fecha = datetime.now().strftime("%Y%m%d")
