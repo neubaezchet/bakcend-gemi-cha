@@ -48,7 +48,7 @@ def send_html_email(to_email: str, subject: str, html_body: str, text_body: str 
     smtp_server = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
     smtp_port = int(os.environ.get("SMTP_PORT", "587"))
     smtp_user = os.environ.get("SMTP_USER", "davidbaezaospino@gmail.com")
-    smtp_pass = os.environ.get("SMTP_PASS", "rfgr brbi xedv ntzt")
+    smtp_pass = os.environ.get("SMTP_PASS", "fmgn djcc xrav ujyf")
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject

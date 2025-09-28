@@ -1,6 +1,6 @@
 def get_confirmation_template(nombre, consecutivo, empresa, quinzena, link_pdf, archivos_nombres, email_contacto, telefono):
-    """Template HTML para confirmación de recepción de incapacidad"""
-    archivos_list = "<br>".join([f"• {archivo}" for archivo in archivos_nombres])
+    """Template HTML para confirmaciÃ³n de recepciÃ³n de incapacidad"""
+    archivos_list = "<br>".join([f"â€¢ {archivo}" for archivo in archivos_nombres])
     
     return f"""
     <!DOCTYPE html>
@@ -8,7 +8,7 @@ def get_confirmation_template(nombre, consecutivo, empresa, quinzena, link_pdf, 
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Confirmación Incapacidad</title>
+        <title>ConfirmaciÃ³n Incapacidad</title>
     </head>
     <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
         <div style="max-width: 600px; margin: 0 auto; background-color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
@@ -21,12 +21,12 @@ def get_confirmation_template(nombre, consecutivo, empresa, quinzena, link_pdf, 
             
             <!-- Content -->
             <div style="padding: 40px 30px;">
-                <h2 style="color: #333; margin-bottom: 20px;">Buen día, {nombre}</h2>
+                <h2 style="color: #333; margin-bottom: 20px;">Buen dÃ­a, {nombre}</h2>
                 
                 <div style="background: #f8f9fa; padding: 20px; border-left: 4px solid #667eea; margin: 25px 0; border-radius: 0 5px 5px 0;">
                     <p style="margin: 0; color: #333; line-height: 1.6;">
-                        <strong>Confirmo recibido de la documentación correspondiente</strong> y procederemos a <strong>realizar la revisión</strong>. 
-                        En caso de que cumpla con los requisitos establecidos, se realizará la carga en el sistema <strong>{quinzena}</strong>.
+                        <strong>Confirmo recibido de la documentaciÃ³n correspondiente</strong> y procederemos a <strong>realizar la revisiÃ³n</strong>. 
+                        En caso de que cumpla con los requisitos establecidos, se realizarÃ¡ la carga en el sistema <strong>{quinzena}</strong>.
                     </p>
                 </div>
                 
@@ -49,14 +49,14 @@ def get_confirmation_template(nombre, consecutivo, empresa, quinzena, link_pdf, 
                             <td style="padding: 8px 0; color: #333;">{email_contacto}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 8px 0; color: #666; font-weight: bold;">Teléfono:</td>
+                            <td style="padding: 8px 0; color: #666; font-weight: bold;">TelÃ©fono:</td>
                             <td style="padding: 8px 0; color: #333;">{telefono}</td>
                         </tr>
                     </table>
                 </div>
                 
                 <div style="margin: 25px 0;">
-                    <h4 style="color: #333; margin-bottom: 15px;">📋 Documentos recibidos:</h4>
+                    <h4 style="color: #333; margin-bottom: 15px;">ðŸ“‹ Documentos recibidos:</h4>
                     <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; font-size: 14px; line-height: 1.5;">
                         {archivos_list}
                     </div>
@@ -64,14 +64,14 @@ def get_confirmation_template(nombre, consecutivo, empresa, quinzena, link_pdf, 
                 
                 <div style="text-align: center; margin: 30px 0;">
                     <a href="{link_pdf}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 25px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                        📄 Ver Documentos Combinados
+                        ðŸ“„ Ver Documentos Combinados
                     </a>
                 </div>
                 
                 <div style="background: #fff3cd; border: 1px solid #ffeeba; padding: 20px; border-radius: 8px; margin: 25px 0;">
                     <p style="margin: 0; color: #856404; text-align: center; font-weight: bold;">
-                        ⚠️ Estar pendiente vía WhatsApp y correo para seguir en el proceso de radicación si llegase a cumplir los requisitos establecidos, 
-                        del contrario se notificará para su debida gestión.
+                        âš ï¸ Estar pendiente vÃ­a WhatsApp y correo para seguir en el proceso de radicaciÃ³n si llegase a cumplir los requisitos establecidos, 
+                        del contrario se notificarÃ¡ para su debida gestiÃ³n.
                     </p>
                 </div>
             </div>
@@ -85,7 +85,7 @@ def get_confirmation_template(nombre, consecutivo, empresa, quinzena, link_pdf, 
                     "Trabajando para ayudarte"
                 </div>
                 <div style="font-size: 12px; color: #6c757d; line-height: 1.4;">
-                    Este es un mensaje automático de confirmación<br>
+                    Este es un mensaje automÃ¡tico de confirmaciÃ³n<br>
                     Para consultas adicionales, responder a este correo
                 </div>
             </div>
@@ -95,25 +95,25 @@ def get_confirmation_template(nombre, consecutivo, empresa, quinzena, link_pdf, 
     """
 
 def get_alert_template(tipo, cedula, consecutivo, email_contacto, telefono, nombre=None, empresa=None, link_pdf=None, archivos_nombres=None, quinzena=None):
-    """Template HTML para alertas a supervisión"""
+    """Template HTML para alertas a supervisiÃ³n"""
     
     if tipo == "copia":
         titulo = "Copia Registro de Incapacidad"
         contenido_principal = f"""
         <div style="background: #d4edda; border: 1px solid #c3e6cb; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="color: #155724; margin-top: 0;">✅ Empleado Registrado - {empresa}</h3>
+            <h3 style="color: #155724; margin-top: 0;">âœ… Empleado Registrado - {empresa}</h3>
             <p style="margin: 0; color: #155724;">Se ha procesado exitosamente la incapacidad del empleado <strong>{nombre}</strong>.</p>
         </div>
         
         <div style="background: white; border: 1px solid #e9ecef; padding: 20px; border-radius: 8px; margin: 25px 0;">
-            <h4 style="margin-top: 0; color: #667eea;">Información del Empleado</h4>
+            <h4 style="margin-top: 0; color: #667eea;">InformaciÃ³n del Empleado</h4>
             <table style="width: 100%; font-size: 14px;">
                 <tr>
                     <td style="padding: 8px 0; color: #666; font-weight: bold;">Nombre:</td>
                     <td style="padding: 8px 0; color: #333;">{nombre}</td>
                 </tr>
                 <tr>
-                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Cédula:</td>
+                    <td style="padding: 8px 0; color: #666; font-weight: bold;">CÃ©dula:</td>
                     <td style="padding: 8px 0; color: #333;">{cedula}</td>
                 </tr>
                 <tr>
@@ -125,39 +125,39 @@ def get_alert_template(tipo, cedula, consecutivo, email_contacto, telefono, nomb
                     <td style="padding: 8px 0; color: #333;">{email_contacto}</td>
                 </tr>
                 <tr>
-                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Teléfono:</td>
+                    <td style="padding: 8px 0; color: #666; font-weight: bold;">TelÃ©fono:</td>
                     <td style="padding: 8px 0; color: #333;">{telefono}</td>
                 </tr>
             </table>
         </div>
         
         <div style="margin: 25px 0;">
-            <h4 style="color: #333; margin-bottom: 15px;">📋 Documentos procesados:</h4>
+            <h4 style="color: #333; margin-bottom: 15px;">ðŸ“‹ Documentos procesados:</h4>
             <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; font-size: 14px; line-height: 1.5;">
-                {'<br>'.join([f"• {archivo}" for archivo in archivos_nombres]) if archivos_nombres else 'No especificado'}
+                {'<br>'.join([f"â€¢ {archivo}" for archivo in archivos_nombres]) if archivos_nombres else 'No especificado'}
             </div>
         </div>
         
         <div style="text-align: center; margin: 30px 0;">
             <a href="{link_pdf}" style="display: inline-block; background: #28a745; color: white; padding: 12px 30px; text-decoration: none; border-radius: 25px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                📄 Ver Documentos en Drive
+                ðŸ“„ Ver Documentos en Drive
             </a>
         </div>
         """
     
     else:  # alerta
-        titulo = "⚠️ ALERTA: Cédula No Encontrada"
+        titulo = "âš ï¸ ALERTA: CÃ©dula No Encontrada"
         contenido_principal = f"""
         <div style="background: #f8d7da; border: 1px solid #f5c6cb; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="color: #721c24; margin-top: 0;">⚠️ Cédula No Registrada</h3>
-            <p style="margin: 0; color: #721c24;">Se ha recibido documentación de una cédula no encontrada en la base de datos.</p>
+            <h3 style="color: #721c24; margin-top: 0;">âš ï¸ CÃ©dula No Registrada</h3>
+            <p style="margin: 0; color: #721c24;">Se ha recibido documentaciÃ³n de una cÃ©dula no encontrada en la base de datos.</p>
         </div>
         
         <div style="background: white; border: 1px solid #e9ecef; padding: 20px; border-radius: 8px; margin: 25px 0;">
             <h4 style="margin-top: 0; color: #dc3545;">Datos de la Solicitud</h4>
             <table style="width: 100%; font-size: 14px;">
                 <tr>
-                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Cédula:</td>
+                    <td style="padding: 8px 0; color: #666; font-weight: bold;">CÃ©dula:</td>
                     <td style="padding: 8px 0; color: #333; font-weight: bold;">{cedula}</td>
                 </tr>
                 <tr>
@@ -165,11 +165,11 @@ def get_alert_template(tipo, cedula, consecutivo, email_contacto, telefono, nomb
                     <td style="padding: 8px 0; color: #333;">{email_contacto}</td>
                 </tr>
                 <tr>
-                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Teléfono:</td>
+                    <td style="padding: 8px 0; color: #666; font-weight: bold;">TelÃ©fono:</td>
                     <td style="padding: 8px 0; color: #333;">{telefono}</td>
                 </tr>
                 <tr>
-                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Fecha recepción:</td>
+                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Fecha recepciÃ³n:</td>
                     <td style="padding: 8px 0; color: #333;">{quinzena}</td>
                 </tr>
             </table>
@@ -177,7 +177,7 @@ def get_alert_template(tipo, cedula, consecutivo, email_contacto, telefono, nomb
         
         <div style="background: #fff3cd; border: 1px solid #ffeeba; padding: 20px; border-radius: 8px; margin: 25px 0;">
             <p style="margin: 0; color: #856404; text-align: center; font-weight: bold;">
-                🔍 ACCIÓN REQUERIDA: Validar información y contactar al solicitante
+                ðŸ” ACCIÃ“N REQUERIDA: Validar informaciÃ³n y contactar al solicitante
             </p>
         </div>
         """
@@ -195,8 +195,8 @@ def get_alert_template(tipo, cedula, consecutivo, email_contacto, telefono, nomb
             
             <!-- Header -->
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px 20px; text-align: center;">
-                <h1 style="margin: 0; font-size: 24px; font-weight: bold;">IncaNeurobaeza - Supervisión</h1>
-                <p style="margin: 5px 0 0 0; font-style: italic; opacity: 0.9;">Sistema de Gestión</p>
+                <h1 style="margin: 0; font-size: 24px; font-weight: bold;">IncaNeurobaeza - SupervisiÃ³n</h1>
+                <p style="margin: 5px 0 0 0; font-style: italic; opacity: 0.9;">Sistema de GestiÃ³n</p>
             </div>
             
             <!-- Content -->
@@ -213,8 +213,8 @@ def get_alert_template(tipo, cedula, consecutivo, email_contacto, telefono, nomb
             <!-- Footer -->
             <div style="background: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e9ecef;">
                 <div style="font-size: 12px; color: #6c757d;">
-                    Sistema Automático IncaNeurobaeza<br>
-                    Notificación de supervisión
+                    Sistema AutomÃ¡tico IncaNeurobaeza<br>
+                    NotificaciÃ³n de supervisiÃ³n
                 </div>
             </div>
         </div>

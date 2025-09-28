@@ -52,7 +52,7 @@ class SimpleTrackingSystem:
                 {
                     "estado": "recibido",
                     "fecha": datetime.now().isoformat(),
-                    "descripcion": "Documentación recibida y registrada en el sistema",
+                    "descripcion": "DocumentaciÃ³n recibida y registrada en el sistema",
                     "usuario": "Sistema"
                 }
             ]
@@ -64,11 +64,11 @@ class SimpleTrackingSystem:
         return tracking_info
 
     def get_tracking_info(self, consecutivo: str) -> Optional[Dict[str, Any]]:
-        """Obtener información de seguimiento"""
+        """Obtener informaciÃ³n de seguimiento"""
         return self.tracking_data.get(consecutivo)
 
     def get_progress_percentage(self, estado_actual: str) -> int:
-        """Obtener porcentaje de progreso según el estado"""
+        """Obtener porcentaje de progreso segÃºn el estado"""
         progress_map = {
             "recibido": 25,
             "en_revision": 50,
@@ -80,35 +80,35 @@ class SimpleTrackingSystem:
         return progress_map.get(estado_actual, 0)
 
     def get_next_steps(self, estado_actual: str) -> list:
-        """Obtener próximos pasos según el estado actual"""
+        """Obtener prÃ³ximos pasos segÃºn el estado actual"""
         next_steps = {
             "recibido": [
-                "📋 Revisión inicial de documentos",
-                "✅ Validación de requisitos",
-                "👤 Asignación a especialista revisor"
+                "ðŸ“‹ RevisiÃ³n inicial de documentos",
+                "âœ… ValidaciÃ³n de requisitos",
+                "ðŸ‘¤ AsignaciÃ³n a especialista revisor"
             ],
             "en_revision": [
-                "🔍 Análisis detallado de documentación",
-                "📊 Verificación con base de datos",
-                "⚖️ Evaluación para aprobación"
+                "ðŸ” AnÃ¡lisis detallado de documentaciÃ³n",
+                "ðŸ“Š VerificaciÃ³n con base de datos",
+                "âš–ï¸ EvaluaciÃ³n para aprobaciÃ³n"
             ],
             "aprobado": [
-                "📝 Preparación para radicación oficial",
-                "💾 Carga en sistema gubernamental",
-                "📧 Notificación de finalización"
+                "ðŸ“ PreparaciÃ³n para radicaciÃ³n oficial",
+                "ðŸ’¾ Carga en sistema gubernamental",
+                "ðŸ“§ NotificaciÃ³n de finalizaciÃ³n"
             ],
             "radicado": [
-                "✅ ¡Proceso completado exitosamente!"
+                "âœ… Â¡Proceso completado exitosamente!"
             ],
             "devuelto": [
-                "📄 Revisar observaciones detalladas",
-                "🔄 Corregir documentos según indicaciones",
-                "📤 Reenviar documentación corregida"
+                "ðŸ“„ Revisar observaciones detalladas",
+                "ðŸ”„ Corregir documentos segÃºn indicaciones",
+                "ðŸ“¤ Reenviar documentaciÃ³n corregida"
             ],
             "rechazado": [
-                "📋 Revisar motivos específicos de rechazo",
-                "📞 Contactar soporte para orientación",
-                "🔄 Evaluar nueva solicitud si aplica"
+                "ðŸ“‹ Revisar motivos especÃ­ficos de rechazo",
+                "ðŸ“ž Contactar soporte para orientaciÃ³n",
+                "ðŸ”„ Evaluar nueva solicitud si aplica"
             ]
         }
         return next_steps.get(estado_actual, [])

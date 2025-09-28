@@ -1,5 +1,5 @@
 # Ignorar credencial de Google
-credentials.json
+incapacidades-sa.json
 
 # Python
 __pycache__/
