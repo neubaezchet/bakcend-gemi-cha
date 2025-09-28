@@ -50,24 +50,24 @@ def create_folder_if_not_exists(service, folder_name, parent_folder_id='root'):
 
 def upload_to_drive(file_path: Path, empresa: str, cedula: str, tipo: str, consecutivo: str = None) -> str:
     """
-    Sube un archivo a Google Drive organizÃ¡ndolo por empresa
+    Sube un archivo a Google Drive organizandolo por empresa
     
     Args:
         file_path: Ruta del archivo a subir
         empresa: Nombre de la empresa
-        cedula: CÃ©dula del empleado
+        cedula: Cedula del empleado
         tipo: Tipo de incapacidad
-        consecutivo: Consecutivo Ãºnico (opcional)
+        consecutivo: Consecutivo unico (opcional)
         
     Returns:
-        URL pÃºblica del archivo subido
+        URL publica del archivo subido
     """
     try:
         service = get_authenticated_service()
         
-        # Crear estructura de carpetas: Incapacidades / {Empresa} / {AÃ±o}
+        # Crear estructura de carpetas: Incapacidades / {Empresa} / {Ano}
         from datetime import datetime
-        aÃ±o_actual = str(datetime.now().year)
+        ano_actual = str(datetime.now().year)  # CORREGIDO: cambiado de aÃ±o_actual
         
         # Carpeta principal "Incapacidades"
         main_folder_id = create_folder_if_not_exists(service, "Incapacidades")
@@ -75,8 +75,8 @@ def upload_to_drive(file_path: Path, empresa: str, cedula: str, tipo: str, conse
         # Carpeta de empresa dentro de "Incapacidades"
         empresa_folder_id = create_folder_if_not_exists(service, empresa, main_folder_id)
         
-        # Carpeta del aÃ±o dentro de la empresa
-        year_folder_id = create_folder_if_not_exists(service, aÃ±o_actual, empresa_folder_id)
+        # Carpeta del año dentro de la empresa
+        year_folder_id = create_folder_if_not_exists(service, ano_actual, empresa_folder_id)
         
         # Nombre del archivo con formato: CONSECUTIVO_CEDULA_TIPO_FECHA.pdf
         fecha = datetime.now().strftime("%Y%m%d")
@@ -89,7 +89,7 @@ def upload_to_drive(file_path: Path, empresa: str, cedula: str, tipo: str, conse
         file_metadata = {
             'name': filename,
             'parents': [year_folder_id],
-            'description': f'Incapacidad {tipo} - CÃ©dula: {cedula} - Empresa: {empresa}'
+            'description': f'Incapacidad {tipo} - Cedula: {cedula} - Empresa: {empresa}'
         }
         
         # Subir archivo
@@ -105,14 +105,14 @@ def upload_to_drive(file_path: Path, empresa: str, cedula: str, tipo: str, conse
             fields='id,webViewLink,webContentLink'
         ).execute()
         
-        # Hacer pÃºblico el archivo (opcional - comentar si no quieres que sea pÃºblico)
+        # Hacer publico el archivo (opcional - comentar si no quieres que sea publico)
         try:
             service.permissions().create(
                 fileId=file.get('id'),
                 body={'role': 'reader', 'type': 'anyone'}
             ).execute()
         except Exception as perm_error:
-            print(f"Advertencia: No se pudo hacer pÃºblico el archivo: {perm_error}")
+            print(f"Advertencia: No se pudo hacer publico el archivo: {perm_error}")
         
         # Retornar URL para visualizar
         return file.get('webViewLink', f"https://drive.google.com/file/d/{file.get('id')}/view")
@@ -121,7 +121,7 @@ def upload_to_drive(file_path: Path, empresa: str, cedula: str, tipo: str, conse
         raise Exception(f"Error subiendo archivo a Drive: {str(e)}")
 
 def get_folder_link(empresa: str) -> str:
-    """Obtiene el link de la carpeta de una empresa especÃ­fica"""
+    """Obtiene el link de la carpeta de una empresa especifica"""
     try:
         service = get_authenticated_service()
         
