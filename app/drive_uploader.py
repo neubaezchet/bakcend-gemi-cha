@@ -1,93 +1,137 @@
+import os
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
-import os
+from google.oauth2.credentials import Credentials
 from pathlib import Path
-from datetime import datetime
 
-# Lista de nombres de meses en español
-MESES_ES = [
-    "", "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
-    "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"
-]
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
+# Variables de entorno necesarias
+CLIENT_ID = os.environ["GOOGLE_CLIENT_ID"]
+CLIENT_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
+REFRESH_TOKEN = os.environ["GOOGLE_REFRESH_TOKEN"]
+REDIRECT_URI = os.environ["GOOGLE_REDIRECT_URI"]
 
-# Detecta si estás en Render o local
-def get_credentials_path():
-    if Path("/etc/secrets/credentials.json").exists():
-        return "/etc/secrets/credentials.json"
-    return "./credentials.json"
-
-def get_user_service():
-    # Aquí NO usamos token.pickle, el flujo OAuth debe ser gestionado por el backend
-    creds = None
-    credentials_path = get_credentials_path()
-    # Si tienes un mecanismo para guardar y refrescar el token en la base de datos, úsalo aquí.
-    # Si quieres que el usuario autorice por navegador, descomenta las líneas abajo.
-    flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
-    creds = flow.run_local_server(port=0)
+def get_authenticated_service():
+    """Crea el servicio autenticado de Google Drive"""
+    creds = Credentials(
+        token=None,
+        refresh_token=REFRESH_TOKEN,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=CLIENT_ID,
+        client_secret=CLIENT_SECRET,
+        scopes=["https://www.googleapis.com/auth/drive.file"]
+    )
+    
+    # Renovar el token si es necesario
+    if creds.expired or not creds.valid:
+        creds.refresh(Request())
+    
     return build('drive', 'v3', credentials=creds)
 
-def get_or_create_folder(service, name, parent_id=None):
-    query = f"name='{name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
-    if parent_id:
-        query += f" and '{parent_id}' in parents"
-    results = service.files().list(
-        q=query,
-        spaces='drive',
-        fields='files(id, name)',
-        pageSize=10
-    ).execute()
-    items = results.get('files', [])
-    if items:
-        return items[0]['id']
-    file_metadata = {
-        'name': name,
+def create_folder_if_not_exists(service, folder_name, parent_folder_id='root'):
+    """Crea una carpeta en Drive si no existe"""
+    # Buscar si ya existe la carpeta
+    query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and parents in '{parent_folder_id}'"
+    results = service.files().list(q=query, fields="files(id, name)").execute()
+    folders = results.get('files', [])
+    
+    if folders:
+        return folders[0]['id']
+    
+    # Crear carpeta si no existe
+    folder_metadata = {
+        'name': folder_name,
         'mimeType': 'application/vnd.google-apps.folder',
+        'parents': [parent_folder_id]
     }
-    if parent_id:
-        file_metadata['parents'] = [parent_id]
-    folder = service.files().create(
-        body=file_metadata,
-        fields='id'
-    ).execute()
+    
+    folder = service.files().create(body=folder_metadata, fields='id').execute()
     return folder.get('id')
 
-def upload_to_drive(file_path: Path, empresa: str, cedula: str, tipo: str = "INCAPACIDADES"):
-    service = get_user_service()
+def upload_to_drive(file_path: Path, empresa: str, cedula: str, tipo: str, consecutivo: str = None) -> str:
+    """
+    Sube un archivo a Google Drive organizándolo por empresa
+    
+    Args:
+        file_path: Ruta del archivo a subir
+        empresa: Nombre de la empresa
+        cedula: Cédula del empleado
+        tipo: Tipo de incapacidad
+        consecutivo: Consecutivo único (opcional)
+        
+    Returns:
+        URL pública del archivo subido
+    """
+    try:
+        service = get_authenticated_service()
+        
+        # Crear estructura de carpetas: Incapacidades / {Empresa} / {Año}
+        from datetime import datetime
+        año_actual = str(datetime.now().year)
+        
+        # Carpeta principal "Incapacidades"
+        main_folder_id = create_folder_if_not_exists(service, "Incapacidades")
+        
+        # Carpeta de empresa dentro de "Incapacidades"
+        empresa_folder_id = create_folder_if_not_exists(service, empresa, main_folder_id)
+        
+        # Carpeta del año dentro de la empresa
+        year_folder_id = create_folder_if_not_exists(service, año_actual, empresa_folder_id)
+        
+        # Nombre del archivo con formato: CONSECUTIVO_CEDULA_TIPO_FECHA.pdf
+        fecha = datetime.now().strftime("%Y%m%d")
+        if consecutivo:
+            filename = f"{consecutivo}_{cedula}_{tipo}_{fecha}.pdf"
+        else:
+            filename = f"{cedula}_{tipo}_{fecha}.pdf"
+        
+        # Metadatos del archivo
+        file_metadata = {
+            'name': filename,
+            'parents': [year_folder_id],
+            'description': f'Incapacidad {tipo} - Cédula: {cedula} - Empresa: {empresa}'
+        }
+        
+        # Subir archivo
+        media = MediaFileUpload(
+            str(file_path), 
+            mimetype='application/pdf',
+            resumable=True
+        )
+        
+        file = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id,webViewLink,webContentLink'
+        ).execute()
+        
+        # Hacer público el archivo (opcional - comentar si no quieres que sea público)
+        try:
+            service.permissions().create(
+                fileId=file.get('id'),
+                body={'role': 'reader', 'type': 'anyone'}
+            ).execute()
+        except Exception as perm_error:
+            print(f"Advertencia: No se pudo hacer público el archivo: {perm_error}")
+        
+        # Retornar URL para visualizar
+        return file.get('webViewLink', f"https://drive.google.com/file/d/{file.get('id')}/view")
+        
+    except Exception as e:
+        raise Exception(f"Error subiendo archivo a Drive: {str(e)}")
 
-    # 1. Carpeta raíz
-    root_folder_id = get_or_create_folder(service, tipo.upper().strip())
-
-    # 2. Subcarpeta por empresa
-    empresa_folder_id = get_or_create_folder(service, empresa.upper().strip(), root_folder_id)
-
-    # 3. Subcarpeta por mes y año actual
-    now = datetime.now()
-    nombre_mes_es = MESES_ES[now.month]
-    mes_folder_name = f"{tipo.upper().strip()} {nombre_mes_es} {now.year}"
-    mes_folder_id = get_or_create_folder(service, mes_folder_name, empresa_folder_id)
-
-    # 4. Sube archivo
-    file_metadata = {
-        'name': f"{cedula}_{file_path.name}",
-        'parents': [mes_folder_id]
-    }
-    media = MediaFileUpload(str(file_path), resumable=True)
-    uploaded = service.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields='webViewLink'
-    ).execute()
-    return uploaded.get('webViewLink')
-
-# Ejemplo de uso:
-if __name__ == "__main__":
-    # Cambia estos valores por los datos reales
-    path_al_archivo = Path("actividad5 (1).pdf")   # Cambia a la ruta real de tu archivo
-    empresa = "MiEmpresa"                         # Cambia por el nombre de la empresa
-    cedula = "123456789"                          # Cambia por la cédula del usuario
-
-    link = upload_to_drive(path_al_archivo, empresa, cedula)
-    print("Archivo subido. Link de visualización:", link)
+def get_folder_link(empresa: str) -> str:
+    """Obtiene el link de la carpeta de una empresa específica"""
+    try:
+        service = get_authenticated_service()
+        
+        # Buscar carpeta principal
+        main_folder_id = create_folder_if_not_exists(service, "Incapacidades")
+        
+        # Buscar carpeta de empresa
+        empresa_folder_id = create_folder_if_not_exists(service, empresa, main_folder_id)
+        
+        return f"https://drive.google.com/drive/folders/{empresa_folder_id}"
+        
+    except Exception as e:
+        return f"Error obteniendo link de carpeta: {str(e)}"
