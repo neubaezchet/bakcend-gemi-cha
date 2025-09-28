@@ -8,7 +8,7 @@ from pathlib import Path
 from datetime import datetime, date
 import calendar
 from app.drive_uploader import upload_to_drive
-from app.pdf_merger import merge_pdfs_from_uploads  # Nueva función
+from app.pdf_merger import merge_pdfs_from_uploads  # Nueva funciÃ³n
 from app.email_templates import get_confirmation_template, get_alert_template  # Templates
 from app.whatsapp_service import WhatsAppService
 from app.simple_tracking import SimpleTrackingSystem
@@ -43,7 +43,7 @@ def send_html_email(to_email: str, subject: str, html_body: str, text_body: str 
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
 
-    # CONFIGURACIÓN DE CORREO - Usando tu Gmail actual
+    # CONFIGURACIÃ“N DE CORREO - Usando tu Gmail actual
     from_email = os.environ.get("SMTP_EMAIL", "davidbaezaospino@gmail.com")
     smtp_server = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
     smtp_port = int(os.environ.get("SMTP_PORT", "587"))
@@ -55,12 +55,12 @@ def send_html_email(to_email: str, subject: str, html_body: str, text_body: str 
     msg["From"] = f"IncaNeurobaeza <{from_email}>"
     msg["To"] = to_email
 
-    # Agregar versión texto plano como fallback
+    # Agregar versiÃ³n texto plano como fallback
     if text_body:
         part1 = MIMEText(text_body, "plain")
         msg.attach(part1)
     
-    # Agregar versión HTML
+    # Agregar versiÃ³n HTML
     part2 = MIMEText(html_body, "html")
     msg.attach(part2)
 
@@ -70,7 +70,7 @@ def send_html_email(to_email: str, subject: str, html_body: str, text_body: str 
         server.login(smtp_user, smtp_pass)
         server.sendmail(from_email, [to_email], msg.as_string())
         server.quit()
-        print(f"📧 Correo HTML enviado a {to_email}")
+        print(f"ðŸ“§ Correo HTML enviado a {to_email}")
         return True, None
     except Exception as e:
         print(f"Error enviando correo: {e}")
@@ -137,13 +137,13 @@ async def subir_incapacidad(
     # Obtener quincena actual para el mensaje
     quinzena_actual = get_current_quinzena()
     
-    # Si el empleado está en el Excel
+    # Si el empleado estÃ¡ en el Excel
     if empleado is not None and not empleado.empty:
         nombre = empleado.iloc[0]["nombre"]
         correo_empleado = empleado.iloc[0]["correo"]
         empresa_reg = empleado.iloc[0]["empresa"]
         
-        # Template de confirmación para el empleado
+        # Template de confirmaciÃ³n para el empleado
         html_empleado = get_confirmation_template(
             nombre=nombre,
             consecutivo=consecutivo,
@@ -156,17 +156,17 @@ async def subir_incapacidad(
         )
         
         text_empleado = f"""
-        Buen día {nombre},
+        Buen dÃ­a {nombre},
         
-        Confirmo recibido de la documentación correspondiente y procederemos a realizar la revisión. 
-        En caso de que cumpla con los requisitos establecidos, se realizará la carga en el sistema {quinzena_actual}.
+        Confirmo recibido de la documentaciÃ³n correspondiente y procederemos a realizar la revisiÃ³n. 
+        En caso de que cumpla con los requisitos establecidos, se realizarÃ¡ la carga en el sistema {quinzena_actual}.
         
         Consecutivo: {consecutivo}
         Empresa: {empresa_reg}
         Documentos: {', '.join(original_filenames)}
         Link del archivo: {link_pdf}
         
-        Estar pendiente vía WhatsApp y correo para seguir en el proceso de radicación.
+        Estar pendiente vÃ­a WhatsApp y correo para seguir en el proceso de radicaciÃ³n.
         
         --
         IncaNeurobaeza
@@ -187,7 +187,7 @@ async def subir_incapacidad(
         for email_dest in emails_to_send:
             sent, err = send_html_email(
                 email_dest, 
-                f"Confirmación Recepción Incapacidad - {consecutivo}",
+                f"ConfirmaciÃ³n RecepciÃ³n Incapacidad - {consecutivo}",
                 html_empleado,
                 text_empleado
             )
@@ -196,7 +196,7 @@ async def subir_incapacidad(
             else:
                 errores_envio.append(f"Error enviando a {email_dest}: {err}")
         
-        # Enviar copia a supervisión
+        # Enviar copia a supervisiÃ³n
         html_supervision = get_alert_template(
             tipo="copia",
             cedula=cedula,
@@ -217,7 +217,7 @@ async def subir_incapacidad(
         
         if envios_exitosos == 0 or not sent_supervision:
             return JSONResponse(status_code=500, content={
-                "error": f"Errores en envío de correos: {'; '.join(errores_envio)} | Supervisión: {err_supervision}", 
+                "error": f"Errores en envÃ­o de correos: {'; '.join(errores_envio)} | SupervisiÃ³n: {err_supervision}", 
                 "link_pdf": link_pdf,
                 "consecutivo": consecutivo
             })
@@ -245,7 +245,7 @@ async def subir_incapacidad(
         }
     
     else:
-        # Si no está en Excel, enviar alerta
+        # Si no estÃ¡ en Excel, enviar alerta
         html_alerta = get_alert_template(
             tipo="alerta",
             cedula=cedula,
@@ -255,7 +255,7 @@ async def subir_incapacidad(
             quinzena=quinzena_actual
         )
         
-        # Enviar confirmación al email del formulario
+        # Enviar confirmaciÃ³n al email del formulario
         html_confirmacion_no_registrado = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px 10px 0 0; text-align: center;">
@@ -263,33 +263,33 @@ async def subir_incapacidad(
                 <p style="margin: 0; font-style: italic;">"Trabajando para ayudarte"</p>
             </div>
             <div style="padding: 30px 20px;">
-                <p>Buen día,</p>
-                <p>Confirmo recibido de la documentación correspondiente. Su solicitud está siendo revisada.</p>
+                <p>Buen dÃ­a,</p>
+                <p>Confirmo recibido de la documentaciÃ³n correspondiente. Su solicitud estÃ¡ siendo revisada.</p>
                 <div style="background: #f8f9fa; padding: 15px; border-left: 4px solid #667eea; margin: 20px 0;">
                     <strong>Consecutivo:</strong> {consecutivo}<br>
-                    <strong>Cédula:</strong> {cedula}
+                    <strong>CÃ©dula:</strong> {cedula}
                 </div>
-                <p><strong>Importante:</strong> Su cédula no se encuentra en nuestra base de datos. Nos comunicaremos con usted para validar la información.</p>
+                <p><strong>Importante:</strong> Su cÃ©dula no se encuentra en nuestra base de datos. Nos comunicaremos con usted para validar la informaciÃ³n.</p>
             </div>
             <div style="background: #f8f9fa; padding: 15px; text-align: center; border-radius: 0 0 10px 10px; font-size: 12px; color: #666;">
                 <strong>IncaNeurobaeza</strong><br>
                 "Trabajando para ayudarte"<br>
-                Este es un mensaje automático, no responder a este correo.
+                Este es un mensaje automÃ¡tico, no responder a este correo.
             </div>
         </div>
         """
         
-        # Enviar confirmación al solicitante
+        # Enviar confirmaciÃ³n al solicitante
         sent_solicitante, err_sol = send_html_email(
             email,
-            f"Confirmación Recepción Documentación - {consecutivo}",
+            f"ConfirmaciÃ³n RecepciÃ³n DocumentaciÃ³n - {consecutivo}",
             html_confirmacion_no_registrado
         )
         
-        # Enviar alerta a supervisión
+        # Enviar alerta a supervisiÃ³n
         sent_alerta, err_alert = send_html_email(
             "xoblaxbaezaospino@gmail.com", 
-            f"⚠️ ALERTA: Cédula no encontrada - {consecutivo}",
+            f"âš ï¸ ALERTA: CÃ©dula no encontrada - {consecutivo}",
             html_alerta
         )
         
@@ -299,7 +299,7 @@ async def subir_incapacidad(
                 "consecutivo": consecutivo
             })
         
-        # Enviar WhatsApp para cédula no encontrada
+        # Enviar WhatsApp para cÃ©dula no encontrada
         whatsapp_sent = whatsapp_service.send_confirmation_whatsapp(
             telefono=telefono,
             nombre="",
@@ -313,7 +313,7 @@ async def subir_incapacidad(
             
         return {
             "status": "warning",
-            "mensaje": "Cédula no encontrada - Documentación recibida para revisión",
+            "mensaje": "CÃ©dula no encontrada - DocumentaciÃ³n recibida para revisiÃ³n",
             "consecutivo": consecutivo,
             "correos_enviados": [email],
             "whatsapp_enviado": whatsapp_sent
@@ -321,7 +321,7 @@ async def subir_incapacidad(
 
 @app.get("/seguimiento/{consecutivo}", response_class=HTMLResponse)
 async def seguimiento_incapacidad(consecutivo: str):
-    """Página web de seguimiento de incapacidad"""
+    """PÃ¡gina web de seguimiento de incapacidad"""
     try:
         tracking_info = tracking_system.get_tracking_info(consecutivo)
         
@@ -342,7 +342,7 @@ async def seguimiento_incapacidad(consecutivo: str):
         status_color = tracking_system.get_status_color(estado_actual)
         fecha_creacion = datetime.fromisoformat(tracking_info["fecha_creacion"]).strftime("%d/%m/%Y")
         
-        # Generar HTML de próximos pasos
+        # Generar HTML de prÃ³ximos pasos
         next_steps_html = ""
         for step in next_steps:
             next_steps_html += f"<li>{step}</li>"
@@ -359,12 +359,12 @@ async def seguimiento_incapacidad(consecutivo: str):
                 <div class="timeline-content">
                     <h6>{evento["estado"].replace("_", " ").title()}</h6>
                     <p>{evento["descripcion"]}</p>
-                    <small>📅 {fecha_formato}</small>
+                    <small>ðŸ“… {fecha_formato}</small>
                 </div>
             </div>
             """
         
-        # Página HTML completa (copio la página completa que creé antes)
+        # PÃ¡gina HTML completa (copio la pÃ¡gina completa que creÃ© antes)
         html_content = f"""
         <!DOCTYPE html>
         <html lang="es">
@@ -487,7 +487,7 @@ async def seguimiento_incapacidad(consecutivo: str):
                     padding: 8px 0; position: relative; padding-left: 25px; 
                 }}
                 .next-steps li::before {{
-                    content: '▶'; position: absolute; left: 0; 
+                    content: 'â–¶'; position: absolute; left: 0; 
                     color: #667eea; font-size: 0.8rem;
                 }}
                 .contact-section {{
@@ -544,7 +544,7 @@ async def seguimiento_incapacidad(consecutivo: str):
                                 <i class="fas fa-inbox"></i><br>Recibido
                             </div>
                             <div class="step {'completed' if progress_percentage >= 50 else ('current' if progress_percentage >= 25 else 'pending')}">
-                                <i class="fas fa-search"></i><br>Revisión
+                                <i class="fas fa-search"></i><br>RevisiÃ³n
                             </div>
                             <div class="step {'completed' if progress_percentage >= 75 else ('current' if progress_percentage >= 50 else 'pending')}">
                                 <i class="fas fa-check"></i><br>Aprobado
@@ -559,10 +559,10 @@ async def seguimiento_incapacidad(consecutivo: str):
                     <div class="info-grid">
                         <div class="info-card">
                             <h6><i class="fas fa-user"></i> EMPLEADO</h6>
-                            <p>{tracking_info.get('nombre') or 'En validación'}</p>
+                            <p>{tracking_info.get('nombre') or 'En validaciÃ³n'}</p>
                         </div>
                         <div class="info-card">
-                            <h6><i class="fas fa-id-card"></i> CÉDULA</h6>
+                            <h6><i class="fas fa-id-card"></i> CÃ‰DULA</h6>
                             <p>{tracking_info.get('cedula')}</p>
                         </div>
                         <div class="info-card">
@@ -583,14 +583,14 @@ async def seguimiento_incapacidad(consecutivo: str):
 
                     <!-- Next Steps -->
                     <div class="next-steps">
-                        <h5><i class="fas fa-tasks"></i> Próximos Pasos</h5>
+                        <h5><i class="fas fa-tasks"></i> PrÃ³ximos Pasos</h5>
                         <ul>{next_steps_html}</ul>
                     </div>
                 </div>
 
                 <!-- Contact -->
                 <div class="contact-section">
-                    <h6><i class="fas fa-headset"></i> ¿Necesita ayuda?</h6>
+                    <h6><i class="fas fa-headset"></i> Â¿Necesita ayuda?</h6>
                     <div class="contact-buttons">
                         <a href="https://wa.me/57{tracking_info.get('telefono', '').replace('57', '')}?text=Consulta sobre incapacidad {consecutivo}" 
                            class="contact-btn whatsapp-btn" target="_blank">
@@ -626,4 +626,4 @@ async def seguimiento_incapacidad(consecutivo: str):
 
 @app.get("/")
 def root():
-    return {"message": "✅ API IncaNeurobaeza funcionando - Trabajando para ayudarte"}
+    return {"message": "âœ… API IncaNeurobaeza funcionando - Trabajando para ayudarte"}
