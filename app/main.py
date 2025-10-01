@@ -681,15 +681,15 @@ def test_smtp_connection():
 
 @app.get("/test-email")
 def test_email():
-    """Endpoint para probar el envio de emails con el nuevo sistema - CON DETALLES DE ERROR"""
+    """Endpoint para probar el envio de emails con el nuevo sistema"""
     print("=== PROBANDO NUEVO SISTEMA EMAIL ===")
     
     try:
         sent, error = email_service.send_html_email(
             "davidbaezaospino@gmail.com",
-            "Test Email - IncaNeurobaeza NUEVO SISTEMA",
-            "<h1>Email de Prueba - Nuevo Sistema</h1><p>Si recibes este mensaje, el nuevo sistema de emails está funcionando correctamente.</p>",
-            "Email de Prueba - Nuevo Sistema - Si recibes este mensaje, el sistema está funcionando correctamente."
+            "Test Email - IncaNeurobaeza",
+            "<h1>Email de Prueba</h1><p>Si recibes este mensaje, el sistema funciona correctamente.</p>",
+            "Email de Prueba - Sistema funcionando correctamente."
         )
         
         result = {
