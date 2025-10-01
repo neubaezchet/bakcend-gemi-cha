@@ -1,3 +1,4 @@
+from app.image_quality_validator import validate_uploaded_file
 from typing import List
 from fastapi import FastAPI, UploadFile, Form, File
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -73,6 +74,38 @@ async def subir_incapacidad(
     print(f"Telefono: {telefono}")
     print(f"Tipo: {tipo}")
     print(f"Archivos recibidos: {len(archivos)}")
+    
+    # VALIDAR CALIDAD DE ARCHIVOS
+    print("=== VALIDANDO CALIDAD DE ARCHIVOS ===")
+    archivos_rechazados = []
+    for archivo in archivos:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(archivo.filename).suffix) as tmp:
+            shutil.copyfileobj(archivo.file, tmp)
+            temp_path = Path(tmp.name)
+            archivo.file.seek(0)  # Reset para siguiente uso
+            
+            # Validar calidad
+            print(f"Validando: {archivo.filename}")
+            is_valid, message, details = validate_uploaded_file(temp_path)
+            temp_path.unlink()  # Limpiar temporal
+            
+            if not is_valid:
+                print(f"❌ Archivo rechazado: {archivo.filename} - {message}")
+                archivos_rechazados.append(f"{archivo.filename}: {message}")
+            else:
+                print(f"✅ Archivo aceptado: {archivo.filename}")
+
+    if archivos_rechazados:
+        print(f"❌ PROCESO DETENIDO - Archivos con baja calidad")
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "Algunos archivos no tienen calidad aceptable",
+                "archivos_rechazados": archivos_rechazados
+            }
+        )
+    
+    print("✅ Todos los archivos pasaron validación de calidad")
     
     try:
         df = pd.read_excel(DATA_PATH)
@@ -721,3 +754,4 @@ def debug_all_env_vars():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+            "

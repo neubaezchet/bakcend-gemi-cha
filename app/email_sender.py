@@ -88,6 +88,10 @@ class EmailSender:
             print("1. Clave de aplicación incorrecta o expirada")
             print("2. 2FA no activado en Gmail")
             print("3. 'Acceso de apps menos seguras' deshabilitado")
+print(f"=== CONFIGURACIÓN EMAIL ===")
+   print(f"Email: {self.email}")
+   print(f"Password length: {len(self.password)}")
+   print(f"Server: {self.smtp_server}:{self.smtp_port}")
             return False, error_msg
             
         except smtplib.SMTPRecipientsRefused as e:
