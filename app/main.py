@@ -65,7 +65,7 @@ async def subir_incapacidad(
     archivos: List[UploadFile] = File(...)
 ):
     print(f"=== INICIANDO PROCESO INCAPACIDAD ===")
-    
+
     # VALIDAR CALIDAD DE ARCHIVOS
     archivos_rechazados = []
     for archivo in archivos:
@@ -73,10 +73,10 @@ async def subir_incapacidad(
             shutil.copyfileobj(archivo.file, tmp)
             temp_path = Path(tmp.name)
             archivo.file.seek(0)
-            
+
             is_valid, message, details = validate_uploaded_file(temp_path)
             temp_path.unlink()
-            
+
             if not is_valid:
                 archivos_rechazados.append(f"{archivo.filename}: {message}")
 
@@ -88,7 +88,7 @@ async def subir_incapacidad(
                 "archivos_rechazados": archivos_rechazados
             }
         )
-    
+
     try:
         df = pd.read_excel(DATA_PATH)
     except Exception as e:
@@ -96,7 +96,7 @@ async def subir_incapacidad(
 
     empleado = df[df["cedula"] == int(cedula)] if not df.empty else None
     consecutivo = f"INC-{str(uuid.uuid4())[:8].upper()}"
-    
+
     try:
         empresa_destino = empleado.iloc[0]["empresa"] if empleado is not None and not empleado.empty else "OTRA_EMPRESA"
         pdf_final_path, original_filenames = await merge_pdfs_from_uploads(archivos, cedula, tipo)
@@ -116,12 +116,12 @@ async def subir_incapacidad(
     )
 
     quinzena_actual = get_current_quinzena()
-    
+
     if empleado is not None and not empleado.empty:
         nombre = empleado.iloc[0]["nombre"]
         correo_empleado = empleado.iloc[0]["correo"]
         empresa_reg = empleado.iloc[0]["empresa"]
-        
+
         html_empleado = get_confirmation_template(
             nombre=nombre,
             consecutivo=consecutivo,
@@ -132,25 +132,25 @@ async def subir_incapacidad(
             email_contacto=email,
             telefono=telefono
         )
-        
+
         text_empleado = f"Buen dia {nombre}, Confirmo recibido. Consecutivo: {consecutivo}"
-        
+
         emails_to_send = []
         if correo_empleado and correo_empleado.strip():
             emails_to_send.append(correo_empleado.strip())
         if email and email.strip() and email.strip().lower() != (correo_empleado or "").strip().lower():
             emails_to_send.append(email.strip())
-        
+
         envios_exitosos = 0
         errores_envio = []
-        
+
         for email_dest in emails_to_send:
             sent, err = email_service.send_html_email(email_dest, f"Confirmacion - {consecutivo}", html_empleado, text_empleado)
             if sent:
                 envios_exitosos += 1
             else:
                 errores_envio.append(f"{email_dest}: {err}")
-        
+
         html_supervision = get_alert_template(
             tipo="copia",
             cedula=cedula,
@@ -162,9 +162,9 @@ async def subir_incapacidad(
             email_contacto=email,
             telefono=telefono
         )
-        
+
         email_service.send_html_email("xoblaxbaezaospina@gmail.com", f"Copia - {consecutivo}", html_supervision)
-        
+
         return {
             "status": "ok",
             "consecutivo": consecutivo,
@@ -172,7 +172,7 @@ async def subir_incapacidad(
             "correos_enviados": emails_to_send,
             "envios_exitosos": envios_exitosos
         }
-    
+
     else:
         html_alerta = get_alert_template(
             tipo="alerta",
@@ -182,10 +182,10 @@ async def subir_incapacidad(
             telefono=telefono,
             quinzena=quinzena_actual
         )
-        
+
         email_service.send_html_email(email, f"Confirmacion - {consecutivo}", html_alerta)
         email_service.send_html_email("xoblaxbaezaospina@gmail.com", f"ALERTA - {consecutivo}", html_alerta)
-        
+
         return {
             "status": "warning",
             "mensaje": "Cedula no encontrada",
@@ -208,3 +208,10 @@ def test_email():
         return {"success": sent, "error": error}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+@app.get("/email/status")
+def email_status():
+    """Devuelve un diagnóstico detallado de la configuración SMTP/OAuth."""
+
+    return email_service.diagnose_configuration()
