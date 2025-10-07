@@ -34,13 +34,14 @@ def get_current_quinzena():
 
 def send_html_email(to_email: str, subject: str, html_body: str, text_body: str = None):
     import smtplib
+    import ssl
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
 
     # CONFIGURACIÓN DE CORREO - Usando variables de entorno
     from_email = os.environ.get("SMTP_EMAIL")
     smtp_server = os.environ.get("SMTP_SERVER")
-    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+    smtp_port = int(os.environ.get("SMTP_PORT", "465"))  # Cambiado a 465 para SSL
     smtp_user = os.environ.get("SMTP_USER")
     smtp_pass = os.environ.get("SMTP_PASS")
 
@@ -69,9 +70,12 @@ def send_html_email(to_email: str, subject: str, html_body: str, text_body: str 
         print(f"   Servidor: {smtp_server}:{smtp_port}")
         print(f"   Usuario: {smtp_user}")
         
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.set_debuglevel(1)  # Activar debug para ver qué pasa
-        server.starttls()
+        # Crear contexto SSL seguro
+        context = ssl.create_default_context()
+        
+        # Usar SMTP_SSL para puerto 465 (en lugar de SMTP con STARTTLS)
+        server = smtplib.SMTP_SSL(smtp_server, smtp_port, context=context)
+        server.set_debuglevel(0)  # Desactivar debug verbose
         server.login(smtp_user, smtp_pass)
         server.sendmail(from_email, [to_email], msg.as_string())
         server.quit()
