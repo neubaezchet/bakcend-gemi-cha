@@ -6,13 +6,16 @@ from google.oauth2.credentials import Credentials
 from pathlib import Path
 
 # Variables de entorno necesarias
-CLIENT_ID = os.environ["GOOGLE_CLIENT_ID"]
-CLIENT_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
-REFRESH_TOKEN = os.environ["GOOGLE_REFRESH_TOKEN"]
-REDIRECT_URI = os.environ["GOOGLE_REDIRECT_URI"]
+CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
+CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
+REFRESH_TOKEN = os.environ.get("GOOGLE_REFRESH_TOKEN")
+REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI")
 
 def get_authenticated_service():
     """Crea el servicio autenticado de Google Drive"""
+    if not all([CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN]):
+        raise ValueError("Faltan credenciales de Google. Verifica las variables de entorno.")
+    
     creds = Credentials(
         token=None,
         refresh_token=REFRESH_TOKEN,

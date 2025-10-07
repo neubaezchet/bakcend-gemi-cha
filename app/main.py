@@ -37,12 +37,12 @@ def send_html_email(to_email: str, subject: str, html_body: str, text_body: str 
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
 
-    # CONFIGURACIÓN DE CORREO - Usando tu Gmail actual
+    # CONFIGURACIÓN DE CORREO - Usando variables de entorno
     from_email = os.environ.get("SMTP_EMAIL", "davidbaezaospino@gmail.com")
     smtp_server = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
     smtp_port = int(os.environ.get("SMTP_PORT", "587"))
     smtp_user = os.environ.get("SMTP_USER", "davidbaezaospino@gmail.com")
-    smtp_pass = os.environ.get("SMTP_PASS", "fmgn djcc xrav ujyf")
+    smtp_pass = os.environ.get("SMTP_PASS", "ugwf bejq lexj zosn")
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
