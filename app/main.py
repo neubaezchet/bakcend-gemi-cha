@@ -8,8 +8,8 @@ from pathlib import Path
 from datetime import datetime, date
 import calendar
 from app.drive_uploader import upload_to_drive
-from app.pdf_merger import merge_pdfs_from_uploads  # Nueva función
-from app.email_templates import get_confirmation_template, get_alert_template  # Templates
+from app.pdf_merger import merge_pdfs_from_uploads
+from app.email_templates import get_confirmation_template, get_alert_template
 
 app = FastAPI()
 
@@ -38,11 +38,17 @@ def send_html_email(to_email: str, subject: str, html_body: str, text_body: str 
     from email.mime.multipart import MIMEMultipart
 
     # CONFIGURACIÓN DE CORREO - Usando variables de entorno
-    from_email = os.environ.get("SMTP_EMAIL", "davidbaezaospino@gmail.com")
-    smtp_server = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
+    from_email = os.environ.get("SMTP_EMAIL")
+    smtp_server = os.environ.get("SMTP_SERVER")
     smtp_port = int(os.environ.get("SMTP_PORT", "587"))
-    smtp_user = os.environ.get("SMTP_USER", "davidbaezaospino@gmail.com")
-    smtp_pass = os.environ.get("SMTP_PASS", "ugwf bejq lexj zosn")
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASS")
+
+    # Validar que existan las credenciales
+    if not all([from_email, smtp_server, smtp_user, smtp_pass]):
+        error_msg = "Error: Faltan variables de entorno de email (SMTP_EMAIL, SMTP_SERVER, SMTP_USER, SMTP_PASS)"
+        print(error_msg)
+        return False, error_msg
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
@@ -59,15 +65,26 @@ def send_html_email(to_email: str, subject: str, html_body: str, text_body: str 
     msg.attach(part2)
 
     try:
+        print(f"📧 Intentando enviar correo a {to_email}...")
+        print(f"   Servidor: {smtp_server}:{smtp_port}")
+        print(f"   Usuario: {smtp_user}")
+        
         server = smtplib.SMTP(smtp_server, smtp_port)
+        server.set_debuglevel(1)  # Activar debug para ver qué pasa
         server.starttls()
         server.login(smtp_user, smtp_pass)
         server.sendmail(from_email, [to_email], msg.as_string())
         server.quit()
-        print(f"📧 Correo HTML enviado a {to_email}")
+        
+        print(f"✅ Correo HTML enviado exitosamente a {to_email}")
         return True, None
+    except smtplib.SMTPAuthenticationError as e:
+        error_msg = f"Error de autenticación SMTP: {e}"
+        print(f"❌ {error_msg}")
+        return False, error_msg
     except Exception as e:
-        print(f"Error enviando correo: {e}")
+        error_msg = f"Error enviando correo: {e}"
+        print(f"❌ {error_msg}")
         return False, str(e)
 
 @app.get("/empleados/{cedula}")
