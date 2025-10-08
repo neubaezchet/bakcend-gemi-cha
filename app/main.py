@@ -11,6 +11,10 @@ from app.drive_uploader import upload_to_drive
 from app.pdf_merger import merge_pdfs_from_uploads
 from app.email_templates import get_confirmation_template, get_alert_template
 
+# Importar Brevo
+import sib_api_v3_sdk
+from sib_api_v3_sdk.rest import ApiException
+
 app = FastAPI()
 
 app.add_middleware(
@@ -33,57 +37,53 @@ def get_current_quinzena():
         return f"segunda quincena de {mes_nombre}"
 
 def send_html_email(to_email: str, subject: str, html_body: str, text_body: str = None):
-    import smtplib
-    import ssl
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
+    """
+    Envía emails usando Brevo API (reemplaza Gmail SMTP bloqueado en Render)
+    """
+    # Obtener credenciales de variables de entorno
+    brevo_api_key = os.environ.get("BREVO_API_KEY")
+    brevo_from_email = os.environ.get("BREVO_FROM_EMAIL", "notificaciones@smtp-brevo.com")
+    reply_to_email = os.environ.get("SMTP_EMAIL", "davidbaezaospino@gmail.com")
 
-    # CONFIGURACIÓN DE CORREO - Usando variables de entorno
-    from_email = os.environ.get("SMTP_EMAIL")
-    smtp_server = os.environ.get("SMTP_SERVER")
-    smtp_port = int(os.environ.get("SMTP_PORT", "465"))  # Cambiado a 465 para SSL
-    smtp_user = os.environ.get("SMTP_USER")
-    smtp_pass = os.environ.get("SMTP_PASS")
-
-    # Validar que existan las credenciales
-    if not all([from_email, smtp_server, smtp_user, smtp_pass]):
-        error_msg = "Error: Faltan variables de entorno de email (SMTP_EMAIL, SMTP_SERVER, SMTP_USER, SMTP_PASS)"
+    # Validar que existe la API key
+    if not brevo_api_key:
+        error_msg = "Error: Falta la variable de entorno BREVO_API_KEY"
         print(error_msg)
         return False, error_msg
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = f"IncaNeurobaeza <{from_email}>"
-    msg["To"] = to_email
-
-    # Agregar versión texto plano como fallback
-    if text_body:
-        part1 = MIMEText(text_body, "plain")
-        msg.attach(part1)
-    
-    # Agregar versión HTML
-    part2 = MIMEText(html_body, "html")
-    msg.attach(part2)
-
     try:
-        print(f"📧 Intentando enviar correo a {to_email}...")
-        print(f"   Servidor: {smtp_server}:{smtp_port}")
-        print(f"   Usuario: {smtp_user}")
+        print(f"📧 Intentando enviar correo a {to_email} con Brevo...")
         
-        # Crear contexto SSL seguro
-        context = ssl.create_default_context()
+        # Configurar el cliente de Brevo
+        configuration = sib_api_v3_sdk.Configuration()
+        configuration.api_key['api-key'] = brevo_api_key
+        api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
         
-        # Usar SMTP_SSL para puerto 465 (en lugar de SMTP con STARTTLS)
-        server = smtplib.SMTP_SSL(smtp_server, smtp_port, context=context)
-        server.set_debuglevel(0)  # Desactivar debug verbose
-        server.login(smtp_user, smtp_pass)
-        server.sendmail(from_email, [to_email], msg.as_string())
-        server.quit()
+        # Convertir bytes a string si es necesario
+        if isinstance(html_body, bytes):
+            html_body = html_body.decode('utf-8')
+        if text_body and isinstance(text_body, bytes):
+            text_body = text_body.decode('utf-8')
         
-        print(f"✅ Correo HTML enviado exitosamente a {to_email}")
+        # Crear el objeto de email
+        send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
+            to=[{"email": to_email}],
+            sender={"name": "IncaNeurobaeza", "email": brevo_from_email},
+            reply_to={"email": reply_to_email},
+            subject=subject,
+            html_content=html_body,
+            text_content=text_body
+        )
+        
+        # Enviar el email
+        api_response = api_instance.send_transac_email(send_smtp_email)
+        
+        print(f"✅ Correo enviado exitosamente a {to_email}")
+        print(f"   Message ID: {api_response.message_id}")
         return True, None
-    except smtplib.SMTPAuthenticationError as e:
-        error_msg = f"Error de autenticación SMTP: {e}"
+        
+    except ApiException as e:
+        error_msg = f"Error de Brevo API: {e}"
         print(f"❌ {error_msg}")
         return False, error_msg
     except Exception as e:
@@ -167,7 +167,7 @@ async def subir_incapacidad(
         
         Consecutivo: {consecutivo}
         Empresa: {empresa_reg}
-        Documentos: {', '.join(original_filenames)}
+        Documentos: {', '.join([f.decode() if isinstance(f, bytes) else f for f in original_filenames])}
         Link del archivo: {link_pdf}
         
         Estar pendiente vía WhatsApp y correo para seguir en el proceso de radicación.
@@ -299,4 +299,4 @@ async def subir_incapacidad(
 
 @app.get("/")
 def root():
-    return {"message": "✅ API IncaNeurobaeza funcionando - Trabajando para ayudarte"}
+    return {"message": "✅ API IncaNeurobaeza funcionando con Brevo - Trabajando para ayudarte"}

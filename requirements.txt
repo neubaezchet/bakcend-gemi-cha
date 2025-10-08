@@ -8,3 +8,4 @@ google-auth-oauthlib
 PyMuPDF
 Pillow
 python-multipart
+sib-api-v3-sdk
