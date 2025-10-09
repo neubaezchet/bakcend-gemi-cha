@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import FastAPI, UploadFile, Form, File
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -112,7 +112,13 @@ async def subir_incapacidad(
     tipo: str = Form(...),
     email: str = Form(...),
     telefono: str = Form(...),
-    archivos: List[UploadFile] = File(...)
+    archivos: List[UploadFile] = File(...),
+    # NUEVOS CAMPOS OPCIONALES
+    births: Optional[str] = Form(None),
+    motherWorks: Optional[str] = Form(None),
+    isPhantomVehicle: Optional[str] = Form(None),
+    daysOfIncapacity: Optional[str] = Form(None),
+    subType: Optional[str] = Form(None)
 ):
     try:
         df = pd.read_excel(DATA_PATH)
@@ -122,6 +128,36 @@ async def subir_incapacidad(
     empleado = df[df["cedula"] == int(cedula)] if not df.empty else None
     consecutivo = f"INC-{str(uuid.uuid4())[:8].upper()}"
     
+    # PROCESAR DATOS ADICIONALES
+    detalles_adicionales = {}
+    tiene_soat = None
+    tiene_licencia = None
+    
+    if births:
+        detalles_adicionales['nacidos_vivos'] = births
+    
+    # Para Paternidad: detectar si tiene licencia (si la madre trabaja)
+    if tipo.lower() == 'paternidad' and motherWorks is not None:
+        tiene_licencia = motherWorks.lower() == 'true'  # Si la madre trabaja = Con Licencia
+        detalles_adicionales['madre_trabaja'] = 'Sí' if tiene_licencia else 'No'
+    
+    # Para Accidente de Tránsito: detectar si tiene SOAT
+    if isPhantomVehicle is not None:
+        tiene_soat = isPhantomVehicle.lower() != 'true'  # Si NO es fantasma, tiene SOAT
+        detalles_adicionales['vehiculo_fantasma'] = 'Sí' if isPhantomVehicle.lower() == 'true' else 'No'
+        detalles_adicionales['tiene_soat'] = 'Sí' if tiene_soat else 'No'
+    
+    if daysOfIncapacity:
+        detalles_adicionales['dias_incapacidad'] = daysOfIncapacity
+    
+    if subType:
+        tipo_legible = {
+            'general': 'Enfermedad general',
+            'labor': 'Accidente laboral',
+            'traffic': 'Accidente de tránsito'
+        }.get(subType, subType)
+        detalles_adicionales['subtipo'] = tipo_legible
+    
     # Procesar y combinar archivos en un solo PDF
     try:
         empresa_destino = empleado.iloc[0]["empresa"] if empleado is not None and not empleado.empty else "OTRA_EMPRESA"
@@ -129,8 +165,16 @@ async def subir_incapacidad(
         # Combinar todos los archivos en un solo PDF (SIN portada)
         pdf_final_path, original_filenames = await merge_pdfs_from_uploads(archivos, cedula, tipo)
         
-        # Subir el PDF combinado a Drive
-        link_pdf = upload_to_drive(pdf_final_path, empresa_destino, cedula, tipo, consecutivo)
+        # Subir el PDF combinado a Drive CON LOS NUEVOS PARÁMETROS
+        link_pdf = upload_to_drive(
+            pdf_final_path, 
+            empresa_destino, 
+            cedula, 
+            tipo, 
+            consecutivo,
+            tiene_soat=tiene_soat,
+            tiene_licencia=tiene_licencia
+        )
         
         # Limpiar archivo temporal
         pdf_final_path.unlink()
@@ -159,6 +203,9 @@ async def subir_incapacidad(
             telefono=telefono
         )
         
+        # Preparar detalles para el texto plano
+        detalles_texto = '\n'.join([f"{k}: {v}" for k, v in detalles_adicionales.items()]) if detalles_adicionales else "No aplica"
+        
         text_empleado = f"""
         Buen día {nombre},
         
@@ -169,6 +216,9 @@ async def subir_incapacidad(
         Empresa: {empresa_reg}
         Documentos: {', '.join([f.decode() if isinstance(f, bytes) else f for f in original_filenames])}
         Link del archivo: {link_pdf}
+        
+        Detalles adicionales:
+        {detalles_texto}
         
         Estar pendiente vía WhatsApp y correo para seguir en el proceso de radicación.
         
@@ -232,7 +282,8 @@ async def subir_incapacidad(
             "consecutivo": consecutivo,
             "link_pdf": link_pdf,
             "archivos_combinados": len(original_filenames),
-            "correos_enviados": emails_to_send
+            "correos_enviados": emails_to_send,
+            "detalles_procesados": detalles_adicionales
         }
     
     else:
