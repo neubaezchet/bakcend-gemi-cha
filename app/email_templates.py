@@ -221,3 +221,133 @@ def get_alert_template(tipo, cedula, consecutivo, email_contacto, telefono, nomb
     </body>
     </html>
     """
+# AGREGAR AL FINAL DE email_templates.py
+
+def get_incompleta_template(nombre, serial, documentos_faltantes, fecha_limite, motivo):
+    """Template para notificar documentación incompleta"""
+    docs_list = "<br>".join([f"❌ {doc}" for doc in documentos_faltantes])
+    
+    return f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Documentación Incompleta</title>
+    </head>
+    <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            
+            <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; padding: 30px 20px; text-align: center;">
+                <h1 style="margin: 0; font-size: 28px; font-weight: bold;">⚠️ Documentación Incompleta</h1>
+                <p style="margin: 5px 0 0 0; font-style: italic; opacity: 0.9;">IncaNeurobaeza</p>
+            </div>
+            
+            <div style="padding: 40px 30px;">
+                <h2 style="color: #333; margin-bottom: 20px;">Hola {nombre},</h2>
+                
+                <div style="background: #fee2e2; padding: 20px; border-left: 4px solid #ef4444; margin: 25px 0; border-radius: 0 5px 5px 0;">
+                    <p style="margin: 0; color: #991b1b; line-height: 1.6;">
+                        Tu incapacidad <strong>{serial}</strong> presenta documentación incompleta o ilegible. 
+                        Debes subsanar lo siguiente antes del <strong>{fecha_limite}</strong>:
+                    </p>
+                </div>
+                
+                <div style="background: white; border: 1px solid #fecaca; padding: 20px; border-radius: 8px; margin: 25px 0;">
+                    <h3 style="margin-top: 0; color: #dc2626; border-bottom: 2px solid #ef4444; padding-bottom: 10px;">Documentos Faltantes o Ilegibles</h3>
+                    <div style="font-size: 14px; line-height: 1.8;">
+                        {docs_list}
+                    </div>
+                </div>
+                
+                {f'<div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin: 25px 0;"><p style="margin: 0; color: #92400e;"><strong>Motivo adicional:</strong> {motivo}</p></div>' if motivo else ''}
+                
+                <div style="background: #dbeafe; border: 1px solid #93c5fd; padding: 20px; border-radius: 8px; margin: 25px 0;">
+                    <p style="margin: 0; color: #1e40af; text-align: center; font-weight: bold;">
+                        📅 Fecha límite para subsanar: {fecha_limite}
+                    </p>
+                </div>
+                
+                <div style="text-align: center; margin: 30px 0;">
+                    <p style="color: #666; font-size: 14px;">Por favor, sube los documentos corregidos lo antes posible para continuar con el proceso de radicación.</p>
+                </div>
+            </div>
+            
+            <div style="background: #f8f9fa; padding: 25px; text-align: center; border-top: 1px solid #e9ecef;">
+                <div style="margin-bottom: 15px;">
+                    <strong style="color: #667eea; font-size: 18px;">IncaNeurobaeza</strong>
+                </div>
+                <div style="color: #6c757d; font-style: italic; margin-bottom: 10px;">
+                    "Trabajando para ayudarte"
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+def get_eps_template(nombre, serial):
+    """Template para notificar transcripción en EPS"""
+    return f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <title>Transcripción EPS Requerida</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 20px;">
+        <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 30px; text-align: center;">
+                <h1 style="margin: 0; font-size: 28px;">📋 Transcripción en EPS</h1>
+            </div>
+            <div style="padding: 30px;">
+                <p>Hola {nombre},</p>
+                <p>Tu incapacidad <strong>{serial}</strong> requiere <strong>transcripción física en tu EPS</strong>.</p>
+                <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0;">
+                    <p style="margin: 0; color: #92400e;">
+                        Por favor, dirígete a tu EPS con tu documento de identidad y solicita la transcripción de esta incapacidad.
+                    </p>
+                </div>
+                <p>Una vez tengas el documento transcrito, súbelo nuevamente al sistema.</p>
+            </div>
+            <div style="background: #f8f9fa; padding: 20px; text-align: center; color: #666; font-size: 12px;">
+                IncaNeurobaeza - "Trabajando para ayudarte"
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+def get_completa_template(nombre, serial):
+    """Template para notificar validación exitosa"""
+    return f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <title>Incapacidad Validada</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 20px;">
+        <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; text-align: center;">
+                <h1 style="margin: 0; font-size: 28px;">✅ Incapacidad Validada</h1>
+            </div>
+            <div style="padding: 30px;">
+                <p>Hola {nombre},</p>
+                <p>¡Excelente noticia! Tu incapacidad <strong>{serial}</strong> ha sido <strong>validada exitosamente</strong>.</p>
+                
+                <div style="background: #d1fae5; border: 2px solid #10b981; padding: 20px; margin: 20px 0; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 24px; margin-bottom: 10px;">📌 ➜ 🟢 ➜ ⚪</div>
+                    <p style="margin: 5px 0; color: #065f46; font-weight: bold;">Recepción → Validación → Radicación</p>
+                </div>
+                
+                <p style="color: #059669; font-weight: bold;">Tu caso ha pasado al área de Radicación para el proceso final.</p>
+                <p>Nos comunicaremos contigo cuando el proceso esté completo.</p>
+            </div>
+            <div style="background: #f8f9fa; padding: 20px; text-align: center; color: #666; font-size: 12px;">
+                IncaNeurobaeza - "Trabajando para ayudarte"
+            </div>
+        </div>
+    </body>
+    </html>
+    """
