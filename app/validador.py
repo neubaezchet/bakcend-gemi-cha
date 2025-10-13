@@ -25,14 +25,14 @@ class FiltrosCasos(BaseModel):
     empresa: Optional[str] = None
     estado: Optional[str] = None
     tipo: Optional[str] = None
-    q: Optional[str] = None  # Búsqueda general
+    q: Optional[str] = None
     page: int = 1
     page_size: int = 20
 
 class CambioEstado(BaseModel):
     estado: str
     motivo: Optional[str] = None
-    documentos: Optional[List[Dict]] = None  # [{"doc": "epicrisis", "estado_doc": "INCOMPLETO"}]
+    documentos: Optional[List[Dict]] = None
     fecha_limite: Optional[str] = None
 
 class NotaRapida(BaseModel):
@@ -40,7 +40,6 @@ class NotaRapida(BaseModel):
     es_importante: bool = False
 
 class BusquedaRelacional(BaseModel):
-    """Modelo para búsqueda relacional avanzada"""
     cedula: Optional[str] = None
     serial: Optional[str] = None
     nombre: Optional[str] = None
@@ -86,6 +85,17 @@ def registrar_evento(db: Session, case_id: int, accion: str, actor: str = "Siste
 
 # ==================== ENDPOINTS ====================
 
+@router.get("/empresas")
+async def listar_empresas(
+    db: Session = Depends(get_db),
+    _: bool = Depends(verificar_token_admin)
+):
+    """Lista todas las empresas activas"""
+    empresas = db.query(Company.nombre).filter(Company.activa == True).all()
+    return {
+        "empresas": [e[0] for e in empresas]
+    }
+
 @router.get("/casos")
 async def listar_casos(
     empresa: Optional[str] = None,
@@ -97,34 +107,31 @@ async def listar_casos(
     db: Session = Depends(get_db),
     _: bool = Depends(verificar_token_admin)
 ):
-    """
-    Lista casos con filtros avanzados
-    
-    - **empresa**: Nombre de la empresa (opcional)
-    - **estado**: Estado del caso (opcional)
-    - **tipo**: Tipo de incapacidad (opcional)
-    - **q**: Búsqueda general (serial/cédula/nombre)
-    - **page**: Número de página (default: 1)
-    - **page_size**: Tamaño de página (default: 20)
-    """
+    """Lista casos con filtros avanzados"""
     
     query = db.query(Case)
     
-    # Filtro por empresa
-    if empresa and empresa != "all":
+    # Filtro por empresa - ignorar "undefined"
+    if empresa and empresa != "all" and empresa != "undefined":
         company = db.query(Company).filter(Company.nombre == empresa).first()
         if company:
             query = query.filter(Case.company_id == company.id)
     
-    # Filtro por estado
-    if estado and estado != "all":
-        query = query.filter(Case.estado == estado)
+    # Filtro por estado - ignorar "undefined"
+    if estado and estado != "all" and estado != "undefined":
+        try:
+            query = query.filter(Case.estado == EstadoCaso[estado])
+        except KeyError:
+            pass
     
-    # Filtro por tipo
-    if tipo and tipo != "all":
-        query = query.filter(Case.tipo == tipo)
+    # Filtro por tipo - ignorar "undefined"
+    if tipo and tipo != "all" and tipo != "undefined":
+        try:
+            query = query.filter(Case.tipo == TipoIncapacidad[tipo])
+        except KeyError:
+            pass
     
-    # Búsqueda general (serial, cédula o nombre)
+    # Búsqueda general
     if q:
         query = query.join(Employee, Case.employee_id == Employee.id, isouter=True)
         query = query.filter(
@@ -135,14 +142,11 @@ async def listar_casos(
             )
         )
     
-    # Contar total antes de paginar
     total = query.count()
     
-    # Paginación
     offset = (page - 1) * page_size
     casos = query.order_by(Case.created_at.desc()).offset(offset).limit(page_size).all()
     
-    # Formatear respuesta
     items = []
     for caso in casos:
         empleado = caso.empleado if caso.empleado else None
@@ -249,16 +253,7 @@ async def cambiar_estado(
     db: Session = Depends(get_db),
     _: bool = Depends(verificar_token_admin)
 ):
-    """
-    Cambia el estado de un caso y envía notificaciones
-    
-    Estados posibles:
-    - INCOMPLETA / ILEGIBLE / INCOMPLETA_ILEGIBLE
-    - EPS_TRANSCRIPCION
-    - DERIVADO_TTHH
-    - CAUSA_EXTRA
-    - COMPLETA
-    """
+    """Cambia el estado de un caso y envía notificaciones"""
     
     caso = db.query(Case).filter(Case.serial == serial).first()
     if not caso:
@@ -267,16 +262,13 @@ async def cambiar_estado(
     estado_anterior = caso.estado.value
     nuevo_estado = cambio.estado
     
-    # Validar estado
     try:
         EstadoCaso(nuevo_estado)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Estado inválido: {nuevo_estado}")
     
-    # Actualizar estado del caso
     caso.estado = EstadoCaso(nuevo_estado)
     
-    # Actualizar documentos si se proporcionan
     if cambio.documentos:
         for doc_data in cambio.documentos:
             doc = db.query(CaseDocument).filter(
@@ -288,7 +280,6 @@ async def cambiar_estado(
                 doc.estado_doc = EstadoDocumento(doc_data.get("estado_doc", "PENDIENTE"))
                 doc.observaciones = cambio.motivo
     
-    # Registrar evento
     registrar_evento(
         db, caso.id, "cambio_estado", 
         actor="Validador",
@@ -298,14 +289,10 @@ async def cambiar_estado(
         metadata={"fecha_limite": cambio.fecha_limite} if cambio.fecha_limite else None
     )
     
-    # Actualizar bloqueo si es INCOMPLETA
     if nuevo_estado in ["INCOMPLETA", "ILEGIBLE", "INCOMPLETA_ILEGIBLE"]:
         caso.bloquea_nueva = True
     
     db.commit()
-    
-    # TODO: Aquí enviar emails con las plantillas correspondientes
-    # usando el sistema de Brevo que ya tienes en email_templates.py
     
     return {
         "status": "ok",
@@ -321,7 +308,7 @@ async def autorizar_nueva_incapacidad(
     db: Session = Depends(get_db),
     _: bool = Depends(verificar_token_admin)
 ):
-    """Autoriza que el trabajador pueda subir una nueva incapacidad (bloqueo híbrido)"""
+    """Autoriza que el trabajador pueda subir una nueva incapacidad"""
     
     caso = db.query(Case).filter(Case.serial == serial).first()
     if not caso:
@@ -350,7 +337,7 @@ async def agregar_nota(
     db: Session = Depends(get_db),
     _: bool = Depends(verificar_token_admin)
 ):
-    """Agrega una nota rápida al caso (Mejora: Quick notes)"""
+    """Agrega una nota rápida al caso"""
     
     caso = db.query(Case).filter(Case.serial == serial).first()
     if not caso:
@@ -358,7 +345,7 @@ async def agregar_nota(
     
     nueva_nota = CaseNote(
         case_id=caso.id,
-        autor="Validador",  # TODO: Obtener de JWT cuando implementes auth
+        autor="Validador",
         contenido=nota.contenido,
         es_importante=nota.es_importante
     )
@@ -382,32 +369,20 @@ async def obtener_estadisticas(
     
     query = db.query(Case)
     
-    if empresa and empresa != "all":
+    if empresa and empresa != "all" and empresa != "undefined":
         company = db.query(Company).filter(Company.nombre == empresa).first()
         if company:
             query = query.filter(Case.company_id == company.id)
     
-    # Contar por estado
     stats = {
         "total_casos": query.count(),
-        "por_estado": {},
-        "por_tipo": {},
-        "ultimos_7_dias": 0
+        "incompletas": query.filter(Case.estado == EstadoCaso.INCOMPLETA).count(),
+        "eps": query.filter(Case.estado == EstadoCaso.EPS_TRANSCRIPCION).count(),
+        "tthh": query.filter(Case.estado == EstadoCaso.DERIVADO_TTHH).count(),
+        "completas": query.filter(Case.estado == EstadoCaso.COMPLETA).count(),
+        "nuevos": query.filter(Case.estado == EstadoCaso.NUEVO).count(),
+        "causa_extra": query.filter(Case.estado == EstadoCaso.CAUSA_EXTRA).count(),
     }
-    
-    # Agrupar por estado
-    for estado in EstadoCaso:
-        count = query.filter(Case.estado == estado).count()
-        stats["por_estado"][estado.value] = count
-    
-    # Agrupar por tipo
-    for tipo in TipoIncapacidad:
-        count = query.filter(Case.tipo == tipo).count()
-        stats["por_tipo"][tipo.value] = count
-    
-    # Casos de últimos 7 días
-    hace_7_dias = datetime.utcnow() - timedelta(days=7)
-    stats["ultimos_7_dias"] = query.filter(Case.created_at >= hace_7_dias).count()
     
     return stats
 
@@ -420,11 +395,7 @@ async def obtener_requisitos_documentos(
     es_prorroga: bool = False,
     db: Session = Depends(get_db)
 ):
-    """
-    Motor de reglas dinámico: calcula documentos requeridos según contexto
-    
-    Este endpoint NO persiste, solo calcula y responde
-    """
+    """Motor de reglas dinámico: calcula documentos requeridos según contexto"""
     
     documentos_requeridos = []
     mensajes = []
@@ -490,22 +461,13 @@ async def obtener_requisitos_documentos(
         "mensajes": mensajes
     }
 
-# ==================== BÚSQUEDA RELACIONAL AVANZADA ====================
-
 @router.post("/busqueda-relacional")
 async def busqueda_relacional(
     request: BusquedaRelacionalRequest,
     db: Session = Depends(get_db),
     _: bool = Depends(verificar_token_admin)
 ):
-    """
-    🔍 BÚSQUEDA RELACIONAL AVANZADA
-    
-    Permite buscar casos por combinaciones flexibles de campos:
-    - Cédula, Serial, Nombre, Tipo, EPS, Fechas
-    - Soporta filtros globales aplicables a todos los registros
-    - Construye WHERE dinámicamente según campos presentes
-    """
+    """Búsqueda relacional avanzada"""
     
     resultados = []
     filtros_globales = request.filtros_globales or {}
@@ -513,7 +475,6 @@ async def busqueda_relacional(
     for registro in request.registros:
         query = db.query(Case).join(Employee, Case.employee_id == Employee.id, isouter=True)
         
-        # Aplicar filtros del registro individual
         if registro.cedula:
             query = query.filter(Case.cedula == registro.cedula)
         
@@ -529,7 +490,6 @@ async def busqueda_relacional(
         if registro.eps:
             query = query.filter(Case.eps.ilike(f"%{registro.eps}%"))
         
-        # Filtros de fechas (rango o individual)
         if registro.fecha_inicio and registro.fecha_fin:
             fecha_inicio_dt = datetime.fromisoformat(registro.fecha_inicio)
             fecha_fin_dt = datetime.fromisoformat(registro.fecha_fin)
@@ -546,25 +506,20 @@ async def busqueda_relacional(
             fecha_fin_dt = datetime.fromisoformat(registro.fecha_fin)
             query = query.filter(Case.fecha_fin <= fecha_fin_dt)
         
-        # Aplicar filtros globales
         if filtros_globales.get("empresa"):
             company = db.query(Company).filter(Company.nombre == filtros_globales["empresa"]).first()
             if company:
                 query = query.filter(Case.company_id == company.id)
         
         if filtros_globales.get("tipo_documento"):
-            # Buscar casos que tengan al menos uno de los documentos especificados
             tipos_docs = filtros_globales["tipo_documento"]
             query = query.join(CaseDocument).filter(CaseDocument.doc_tipo.in_(tipos_docs))
         
-        # Ejecutar query
         casos = query.all()
         
         for caso in casos:
             empleado = caso.empleado
             empresa = caso.empresa
-            
-            # Obtener documentos del caso
             documentos = db.query(CaseDocument).filter(CaseDocument.case_id == caso.id).all()
             
             resultados.append({
@@ -587,9 +542,8 @@ async def busqueda_relacional(
                 ]
             })
     
-    # Registrar búsqueda en historial para auditoría
     historial = SearchHistory(
-        usuario="Validador",  # TODO: Obtener de JWT
+        usuario="Validador",
         tipo_busqueda="relacional",
         parametros_json={
             "filtros_globales": filtros_globales,
@@ -612,20 +566,11 @@ async def busqueda_relacional_desde_excel(
     db: Session = Depends(get_db),
     _: bool = Depends(verificar_token_admin)
 ):
-    """
-    📊 BÚSQUEDA RELACIONAL DESDE EXCEL
+    """Búsqueda relacional desde Excel"""
     
-    Sube un archivo Excel/CSV con columnas flexibles:
-    - Detecta automáticamente columnas por nombre aproximado
-    - No requiere plantilla fija
-    - Convierte fechas automáticamente
-    """
-    
-    # Leer archivo
     contents = await archivo.read()
     
     try:
-        # Intentar leer como Excel
         if archivo.filename.endswith(('.xlsx', '.xls')):
             df = pd.read_excel(io.BytesIO(contents))
         elif archivo.filename.endswith('.csv'):
@@ -635,7 +580,6 @@ async def busqueda_relacional_desde_excel(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error leyendo archivo: {str(e)}")
     
-    # Mapeo flexible de columnas (insensible a mayúsculas/minúsculas)
     columnas_map = {
         "cedula": ["cedula", "cc", "identificacion", "documento"],
         "serial": ["serial", "numero", "consecutivo", "id"],
@@ -646,7 +590,6 @@ async def busqueda_relacional_desde_excel(
         "fecha_fin": ["fecha_fin", "fecha fin", "fin", "hasta"]
     }
     
-    # Detectar columnas presentes
     columnas_detectadas = {}
     for col_objetivo, posibles_nombres in columnas_map.items():
         for col_df in df.columns:
@@ -654,7 +597,6 @@ async def busqueda_relacional_desde_excel(
                 columnas_detectadas[col_objetivo] = col_df
                 break
     
-    # Convertir DataFrame a lista de registros
     registros = []
     for _, row in df.iterrows():
         registro = BusquedaRelacional()
@@ -674,7 +616,6 @@ async def busqueda_relacional_desde_excel(
         if "eps" in columnas_detectadas:
             registro.eps = str(row[columnas_detectadas["eps"]]) if pd.notna(row[columnas_detectadas["eps"]]) else None
         
-        # Fechas: intentar parsear automáticamente
         if "fecha_inicio" in columnas_detectadas:
             try:
                 fecha = pd.to_datetime(row[columnas_detectadas["fecha_inicio"]])
@@ -691,10 +632,8 @@ async def busqueda_relacional_desde_excel(
         
         registros.append(registro)
     
-    # Crear request y llamar al endpoint de búsqueda
     request = BusquedaRelacionalRequest(registros=registros)
     
-    # Registrar en historial con nombre de archivo
     historial = SearchHistory(
         usuario="Validador",
         tipo_busqueda="relacional_excel",
@@ -703,16 +642,14 @@ async def busqueda_relacional_desde_excel(
             "columnas_detectadas": list(columnas_detectadas.keys()),
             "total_filas": len(registros)
         },
-        resultados_count=0,  # Se actualizará después
+        resultados_count=0,
         archivo_nombre=archivo.filename
     )
     db.add(historial)
     db.commit()
     
-    # Ejecutar búsqueda
     resultados_response = await busqueda_relacional(request, db, True)
     
-    # Actualizar conteo de resultados
     historial.resultados_count = resultados_response["total_encontrados"]
     db.commit()
     
@@ -733,16 +670,11 @@ async def exportar_casos(
     db: Session = Depends(get_db),
     _: bool = Depends(verificar_token_admin)
 ):
-    """
-    📥 EXPORTAR CASOS A EXCEL
-    
-    Genera un archivo Excel con los casos filtrados
-    """
+    """Exportar casos a Excel"""
     from fastapi.responses import StreamingResponse
     
     query = db.query(Case).join(Employee, Case.employee_id == Employee.id, isouter=True)
     
-    # Aplicar filtros
     if empresa and empresa != "all":
         company = db.query(Company).filter(Company.nombre == empresa).first()
         if company:
@@ -761,7 +693,6 @@ async def exportar_casos(
     
     casos = query.all()
     
-    # Convertir a DataFrame
     data = []
     for caso in casos:
         empleado = caso.empleado
@@ -785,7 +716,6 @@ async def exportar_casos(
     
     df = pd.DataFrame(data)
     
-    # Generar archivo
     output = io.BytesIO()
     
     if formato == "xlsx":

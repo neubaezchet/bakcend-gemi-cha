@@ -28,10 +28,12 @@ app = FastAPI(title="IncaNeurobaeza API", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://portal-neurobaeza.vercel.app",  # Frontend en Vercel
-        "https://portal-neurobaeza-*.vercel.app",  # Preview deployments
-        "http://localhost:3000",  # Desarrollo local
-        "http://localhost:8000",  # Testing local
+        "https://portal-neurobaeza.vercel.app",
+        "https://portal-neurobaeza-*.vercel.app",
+        "https://repogemin.vercel.app",
+        "https://repogemin-*.vercel.app",
+        "http://localhost:3000",
+        "http://localhost:8000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -174,7 +176,6 @@ async def subir_incapacidad(
     email: str = Form(...),
     telefono: str = Form(...),
     archivos: List[UploadFile] = File(...),
-    # Campos adicionales opcionales
     births: Optional[str] = Form(None),
     motherWorks: Optional[str] = Form(None),
     isPhantomVehicle: Optional[str] = Form(None),
@@ -182,17 +183,11 @@ async def subir_incapacidad(
     subType: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
-    """
-    Endpoint de recepción de incapacidades (trabajadores)
+    """Endpoint de recepción de incapacidades (trabajadores)"""
     
-    NUEVO: Ahora persiste el caso en la base de datos
-    """
-    
-    # 1. Verificar si el empleado existe en BD o Excel
     empleado_bd = db.query(Employee).filter(Employee.cedula == cedula).first()
     
     if not empleado_bd:
-        # Intentar en Excel
         try:
             df = pd.read_excel(DATA_PATH)
             empleado_excel = df[df["cedula"] == int(cedula)]
@@ -202,10 +197,8 @@ async def subir_incapacidad(
     else:
         empleado_encontrado = True
     
-    # 2. Generar serial único
     consecutivo = f"INC-{str(uuid.uuid4())[:8].upper()}"
     
-    # 3. Verificar bloqueo híbrido (si tiene casos INCOMPLETOS sin autorización)
     if empleado_bd:
         caso_bloqueante = db.query(Case).filter(
             Case.employee_id == empleado_bd.id,
@@ -220,7 +213,6 @@ async def subir_incapacidad(
                 "mensaje": f"Tienes un caso pendiente ({caso_bloqueante.serial}) que debe completarse antes de subir uno nuevo. Contacta al validador si necesitas autorización."
             })
     
-    # 4. Procesar metadata adicional
     metadata_form = {}
     tiene_soat = None
     tiene_licencia = None
@@ -243,13 +235,11 @@ async def subir_incapacidad(
     if subType:
         metadata_form['subtipo'] = subType
     
-    # 5. Fusionar archivos en PDF
     try:
         empresa_destino = empleado_bd.empresa.nombre if empleado_bd else "OTRA_EMPRESA"
         
         pdf_final_path, original_filenames = await merge_pdfs_from_uploads(archivos, cedula, tipo)
         
-        # Subir a Drive
         link_pdf = upload_to_drive(
             pdf_final_path, 
             empresa_destino, 
@@ -260,13 +250,11 @@ async def subir_incapacidad(
             tiene_licencia=tiene_licencia
         )
         
-        # Limpiar temporal
         pdf_final_path.unlink()
         
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": f"Error procesando archivos: {e}"})
     
-    # 6. PERSISTIR EN BASE DE DATOS
     tipo_bd = mapear_tipo_incapacidad(subType if subType else tipo)
     
     nuevo_caso = Case(
@@ -283,7 +271,7 @@ async def subir_incapacidad(
         drive_link=link_pdf,
         email_form=email,
         telefono_form=telefono,
-        bloquea_nueva=False  # Por defecto no bloquea
+        bloquea_nueva=False
     )
     
     db.add(nuevo_caso)
@@ -292,7 +280,6 @@ async def subir_incapacidad(
     
     print(f"✅ Caso {consecutivo} persistido en BD con ID {nuevo_caso.id}")
     
-    # 7. Enviar correos
     quinzena_actual = get_current_quinzena()
     
     if empleado_encontrado and empleado_bd:
@@ -323,7 +310,6 @@ async def subir_incapacidad(
         IncaNeurobaeza
         """
         
-        # Enviar correos
         emails_to_send = []
         if correo_empleado:
             emails_to_send.append(correo_empleado)
@@ -338,7 +324,6 @@ async def subir_incapacidad(
                 text_empleado
             )
         
-        # Copia a supervisión
         html_supervision = get_alert_template(
             tipo="copia",
             cedula=cedula,
@@ -368,7 +353,6 @@ async def subir_incapacidad(
         }
     
     else:
-        # Empleado no registrado - Enviar alerta
         html_alerta = get_alert_template(
             tipo="alerta",
             cedula=cedula,
@@ -421,15 +405,9 @@ async def subir_incapacidad(
             "correos_enviados": [email]
         }
 
-# ==================== ENDPOINT DE MIGRACIÓN (Temporal) ====================
-
 @app.post("/admin/migrar-excel")
 async def migrar_excel_a_bd(db: Session = Depends(get_db)):
-    """
-    Migra los empleados desde el Excel a la base de datos
-    
-    USAR SOLO UNA VEZ al iniciar el sistema
-    """
+    """Migra los empleados desde el Excel a la base de datos"""
     
     try:
         df = pd.read_excel(DATA_PATH)
@@ -439,24 +417,20 @@ async def migrar_excel_a_bd(db: Session = Depends(get_db)):
         
         for _, row in df.iterrows():
             try:
-                # Verificar si la empresa existe
                 empresa_nombre = row["empresa"]
                 company = db.query(Company).filter(Company.nombre == empresa_nombre).first()
                 
                 if not company:
-                    # Crear empresa si no existe
                     company = Company(nombre=empresa_nombre, activa=True)
                     db.add(company)
                     db.commit()
                     db.refresh(company)
                     print(f"✅ Empresa creada: {empresa_nombre}")
                 
-                # Verificar si el empleado ya existe
                 cedula = str(row["cedula"])
                 empleado_existente = db.query(Employee).filter(Employee.cedula == cedula).first()
                 
                 if not empleado_existente:
-                    # Crear empleado
                     nuevo_empleado = Employee(
                         cedula=cedula,
                         nombre=row["nombre"],
@@ -491,7 +465,6 @@ async def migrar_excel_a_bd(db: Session = Depends(get_db)):
 def health_check(db: Session = Depends(get_db)):
     """Verifica el estado de la API y la BD"""
     try:
-        # Test conexión BD
         db.execute("SELECT 1")
         return {
             "status": "healthy",
