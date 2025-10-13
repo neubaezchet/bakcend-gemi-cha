@@ -46,13 +46,33 @@ app.include_router(validador_router)
 # Ruta al Excel de empleados (para migración inicial)
 DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "base_empleados.xlsx")
 
+
 # ==================== INICIALIZACIÓN ====================
+
+from app.sync_scheduler import iniciar_sincronizacion_automatica
+
+# Variable global para el scheduler
+scheduler = None
 
 @app.on_event("startup")
 def startup_event():
-    """Inicializa la base de datos al arrancar"""
+    """Inicializa la base de datos y sincronización al arrancar"""
+    global scheduler
+    
     init_db()
     print("🚀 API iniciada correctamente")
+    
+    # Iniciar sincronización automática Excel → PostgreSQL cada 5 minutos
+    scheduler = iniciar_sincronizacion_automatica()
+    print("✅ Sincronización automática activada")
+
+@app.on_event("shutdown")
+def shutdown_event():
+    """Detiene el scheduler al cerrar la aplicación"""
+    global scheduler
+    if scheduler:
+        scheduler.shutdown()
+        print("🛑 Sincronización automática detenida")
 
 # ==================== UTILIDADES ====================
 
