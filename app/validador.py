@@ -91,10 +91,18 @@ async def listar_empresas(
     _: bool = Depends(verificar_token_admin)
 ):
     """Lista todas las empresas activas"""
-    empresas = db.query(Company.nombre).filter(Company.activa == True).all()
-    return {
-        "empresas": [e[0] for e in empresas]
-    }
+    try:
+        empresas = db.query(Company.nombre).filter(Company.activa == True).distinct().all()
+        empresas_list = [e[0] for e in empresas if e[0]]  # Filtrar None y vacíos
+        
+        print(f"✅ Empresas encontradas: {len(empresas_list)}")  # Debug log
+        
+        return {
+            "empresas": sorted(empresas_list)  # Ordenar alfabéticamente
+        }
+    except Exception as e:
+        print(f"❌ Error en /empresas: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/casos")
 async def listar_casos(

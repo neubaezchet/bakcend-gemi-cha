@@ -1,6 +1,7 @@
 """
 Sistema de Base de Datos - IncaNeurobaeza
 Modelos SQLAlchemy para gestión de casos de incapacidades
+VERSIÓN CORREGIDA - 2024
 """
 
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum, JSON
@@ -55,8 +56,8 @@ class Company(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Relaciones
-    empleados = relationship("Employee", back_populates="empresa")
+    # Relaciones con CASCADE
+    empleados = relationship("Employee", back_populates="empresa", cascade="all, delete-orphan")
     casos = relationship("Case", back_populates="empresa")
 
 class Employee(Base):
@@ -68,7 +69,7 @@ class Employee(Base):
     nombre = Column(String(200), nullable=False, index=True)
     correo = Column(String(200))
     telefono = Column(String(50))
-    company_id = Column(Integer, ForeignKey('companies.id'), nullable=False)
+    company_id = Column(Integer, ForeignKey('companies.id', ondelete='CASCADE'), nullable=False)
     eps = Column(String(100))
     activo = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -85,17 +86,17 @@ class Case(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     serial = Column(String(50), nullable=False, unique=True, index=True)
     cedula = Column(String(50), nullable=False, index=True)
-    employee_id = Column(Integer, ForeignKey('employees.id'), nullable=True)  # Puede ser NULL si no está en BD
-    company_id = Column(Integer, ForeignKey('companies.id'), nullable=True)
+    employee_id = Column(Integer, ForeignKey('employees.id', ondelete='SET NULL'), nullable=True)
+    company_id = Column(Integer, ForeignKey('companies.id', ondelete='SET NULL'), nullable=True)
     
     # Datos del caso
     tipo = Column(Enum(TipoIncapacidad), nullable=False)
-    subtipo = Column(String(100))  # Para casos "other" del frontend
+    subtipo = Column(String(100))
     dias_incapacidad = Column(Integer)
     estado = Column(Enum(EstadoCaso), default=EstadoCaso.NUEVO, index=True)
     
     # Metadata adicional (JSON para flexibilidad)
-    metadata_form = Column(JSON)  # births, motherWorks, isPhantomVehicle, etc.
+    metadata_form = Column(JSON)
     
     # Campos adicionales de búsqueda
     eps = Column(String(100), index=True)
@@ -104,7 +105,7 @@ class Case(Base):
     diagnostico = Column(Text)
     
     # Control de flujo
-    bloquea_nueva = Column(Boolean, default=False)  # Bloqueo híbrido
+    bloquea_nueva = Column(Boolean, default=False)
     drive_link = Column(String(500))
     email_form = Column(String(200))
     telefono_form = Column(String(50))
@@ -125,14 +126,14 @@ class CaseDocument(Base):
     __tablename__ = 'case_documents'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    case_id = Column(Integer, ForeignKey('cases.id'), nullable=False)
+    case_id = Column(Integer, ForeignKey('cases.id', ondelete='CASCADE'), nullable=False)
     
-    doc_tipo = Column(String(100), nullable=False)  # "incapacidad_medica", "epicrisis", etc.
+    doc_tipo = Column(String(100), nullable=False)
     requerido = Column(Boolean, default=True)
     estado_doc = Column(Enum(EstadoDocumento), default=EstadoDocumento.PENDIENTE)
     
     # Múltiples versiones (array de URLs)
-    drive_urls = Column(JSON)  # ["url_v1", "url_v2", ...]
+    drive_urls = Column(JSON)
     version_actual = Column(Integer, default=1)
     
     observaciones = Column(Text)
@@ -149,14 +150,14 @@ class CaseEvent(Base):
     __tablename__ = 'case_events'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    case_id = Column(Integer, ForeignKey('cases.id'), nullable=False)
+    case_id = Column(Integer, ForeignKey('cases.id', ondelete='CASCADE'), nullable=False)
     
-    actor = Column(String(200))  # Usuario/Sistema que hizo el cambio
-    accion = Column(String(100), nullable=False)  # "cambio_estado", "subida_doc", "nota", etc.
+    actor = Column(String(200))
+    accion = Column(String(100), nullable=False)
     estado_anterior = Column(String(50))
     estado_nuevo = Column(String(50))
     motivo = Column(Text)
-    metadata_json = Column(JSON)  # Datos adicionales del evento
+    metadata_json = Column(JSON)
     
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     
@@ -168,11 +169,11 @@ class CaseNote(Base):
     __tablename__ = 'case_notes'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    case_id = Column(Integer, ForeignKey('cases.id'), nullable=False)
+    case_id = Column(Integer, ForeignKey('cases.id', ondelete='CASCADE'), nullable=False)
     
     autor = Column(String(200))
     contenido = Column(Text, nullable=False)
-    es_importante = Column(Boolean, default=False)  # Para destacar
+    es_importante = Column(Boolean, default=False)
     
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     
@@ -185,10 +186,10 @@ class SearchHistory(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     usuario = Column(String(200))
-    tipo_busqueda = Column(String(50))  # "relacional", "avanzada", "simple"
-    parametros_json = Column(JSON)  # Filtros usados
+    tipo_busqueda = Column(String(50))
+    parametros_json = Column(JSON)
     resultados_count = Column(Integer)
-    archivo_nombre = Column(String(200))  # Si fue desde Excel
+    archivo_nombre = Column(String(200))
     
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
@@ -196,12 +197,11 @@ class SearchHistory(Base):
 
 def get_database_url():
     """Obtiene la URL de la base de datos desde variables de entorno"""
-    # En producción usará PostgreSQL, en desarrollo SQLite
     database_url = os.environ.get("DATABASE_URL")
     
     if not database_url:
-        # SQLite por defecto para desarrollo
         database_url = "sqlite:///./incapacidades.db"
+        print("⚠️ Usando SQLite (desarrollo). Configura DATABASE_URL para producción.")
     
     # Render usa postgres:// pero SQLAlchemy necesita postgresql://
     if database_url and database_url.startswith("postgres://"):
@@ -209,21 +209,54 @@ def get_database_url():
     
     return database_url
 
-# Motor de base de datos
-engine = create_engine(
-    get_database_url(),
-    echo=False,  # True para debug SQL
-    pool_pre_ping=True,
-    pool_recycle=3600,
-)
+# Configuración del motor
+database_url = get_database_url()
+
+if database_url.startswith("sqlite"):
+    # SQLite para desarrollo
+    engine = create_engine(
+        database_url,
+        echo=False,
+        connect_args={"check_same_thread": False}
+    )
+else:
+    # PostgreSQL para producción
+    engine = create_engine(
+        database_url,
+        echo=False,
+        pool_pre_ping=True,      # Verifica conexiones antes de usarlas
+        pool_recycle=3600,       # Recicla conexiones cada hora
+        pool_size=10,            # Tamaño del pool
+        max_overflow=20,         # Conexiones adicionales permitidas
+        connect_args={
+            "connect_timeout": 10,
+            "options": "-c timezone=America/Bogota"
+        }
+    )
 
 # Sesión
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
     """Crea todas las tablas en la base de datos"""
-    Base.metadata.create_all(bind=engine)
-    print("✅ Base de datos inicializada correctamente")
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("✅ Base de datos inicializada correctamente")
+        
+        # Verificar conexión
+        db = SessionLocal()
+        try:
+            db.execute("SELECT 1")
+            if database_url.startswith("postgresql"):
+                print("✅ Conexión a PostgreSQL exitosa")
+            else:
+                print("✅ Conexión a SQLite exitosa")
+        finally:
+            db.close()
+            
+    except Exception as e:
+        print(f"❌ Error inicializando base de datos: {e}")
+        raise
 
 def get_db():
     """Dependency para FastAPI - Obtiene sesión de BD"""

@@ -1,4 +1,4 @@
-from typing import List, Optional
+ from typing import List, Optional
 from fastapi import FastAPI, UploadFile, Form, File, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,14 +24,19 @@ from sib_api_v3_sdk.rest import ApiException
 
 app = FastAPI(title="IncaNeurobaeza API", version="2.0.0")
 
-# CORS
+# ==================== CORS ACTUALIZADO ====================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        # Frontend de Validadores (Vercel)
         "https://portal-neurobaeza.vercel.app",
         "https://portal-neurobaeza-*.vercel.app",
+        
+        # Frontend de Trabajadores (Vercel - si existe)
         "https://repogemin.vercel.app",
         "https://repogemin-*.vercel.app",
+        
+        # Desarrollo local
         "http://localhost:3000",
         "http://localhost:8000",
     ],
@@ -63,8 +68,11 @@ def startup_event():
     print("🚀 API iniciada correctamente")
     
     # Iniciar sincronización automática Excel → PostgreSQL cada 5 minutos
-    scheduler = iniciar_sincronizacion_automatica()
-    print("✅ Sincronización automática activada")
+    try:
+        scheduler = iniciar_sincronizacion_automatica()
+        print("✅ Sincronización automática activada")
+    except Exception as e:
+        print(f"⚠️ Error iniciando sincronización: {e}")
 
 @app.on_event("shutdown")
 def shutdown_event():
@@ -151,6 +159,7 @@ def mapear_tipo_incapacidad(tipo_frontend: str) -> TipoIncapacidad:
 def root():
     return {
         "message": "✅ API IncaNeurobaeza v2.0 - Trabajando para ayudarte",
+        "status": "online",
         "endpoints": {
             "trabajadores": "/empleados/{cedula}, /subir-incapacidad/",
             "validadores": "/validador/* (requiere X-Admin-Token)",
@@ -175,15 +184,16 @@ def obtener_empleado(cedula: str, db: Session = Depends(get_db)):
     
     # Si no está en BD, intentar en Excel (fallback)
     try:
-        df = pd.read_excel(DATA_PATH)
-        empleado_excel = df[df["cedula"] == int(cedula)]
-        if not empleado_excel.empty:
-            return {
-                "nombre": empleado_excel.iloc[0]["nombre"],
-                "empresa": empleado_excel.iloc[0]["empresa"],
-                "correo": empleado_excel.iloc[0]["correo"],
-                "eps": empleado_excel.iloc[0].get("eps", None)
-            }
+        if os.path.exists(DATA_PATH):
+            df = pd.read_excel(DATA_PATH)
+            empleado_excel = df[df["cedula"] == int(cedula)]
+            if not empleado_excel.empty:
+                return {
+                    "nombre": empleado_excel.iloc[0]["nombre"],
+                    "empresa": empleado_excel.iloc[0]["empresa"],
+                    "correo": empleado_excel.iloc[0]["correo"],
+                    "eps": empleado_excel.iloc[0].get("eps", None)
+                }
     except Exception as e:
         print(f"Error leyendo Excel: {e}")
     
@@ -209,9 +219,12 @@ async def subir_incapacidad(
     
     if not empleado_bd:
         try:
-            df = pd.read_excel(DATA_PATH)
-            empleado_excel = df[df["cedula"] == int(cedula)]
-            empleado_encontrado = not empleado_excel.empty
+            if os.path.exists(DATA_PATH):
+                df = pd.read_excel(DATA_PATH)
+                empleado_excel = df[df["cedula"] == int(cedula)]
+                empleado_encontrado = not empleado_excel.empty
+            else:
+                empleado_encontrado = False
         except:
             empleado_encontrado = False
     else:
@@ -230,7 +243,7 @@ async def subir_incapacidad(
             return JSONResponse(status_code=409, content={
                 "bloqueo": True,
                 "serial_pendiente": caso_bloqueante.serial,
-                "mensaje": f"Tienes un caso pendiente ({caso_bloqueante.serial}) que debe completarse antes de subir uno nuevo. Contacta al validador si necesitas autorización."
+                "mensaje": f"Tienes un caso pendiente ({caso_bloqueante.serial}) que debe completarse antes de subir uno nuevo."
             })
     
     metadata_form = {}
@@ -397,10 +410,6 @@ async def subir_incapacidad(
                 </div>
                 <p><strong>Importante:</strong> Su cédula no se encuentra en nuestra base de datos. Nos comunicaremos con usted para validar la información.</p>
             </div>
-            <div style="background: #f8f9fa; padding: 15px; text-align: center; border-radius: 0 0 10px 10px; font-size: 12px; color: #666;">
-                <strong>IncaNeurobaeza</strong><br>
-                "Trabajando para ayudarte"
-            </div>
         </div>
         """
         
@@ -428,6 +437,11 @@ async def subir_incapacidad(
 @app.post("/admin/migrar-excel")
 async def migrar_excel_a_bd(db: Session = Depends(get_db)):
     """Migra los empleados desde el Excel a la base de datos"""
+    
+    if not os.path.exists(DATA_PATH):
+        return JSONResponse(status_code=404, content={
+            "error": f"Archivo Excel no encontrado en {DATA_PATH}"
+        })
     
     try:
         df = pd.read_excel(DATA_PATH)
@@ -489,7 +503,8 @@ def health_check(db: Session = Depends(get_db)):
         return {
             "status": "healthy",
             "database": "connected",
-            "version": "2.0.0"
+            "version": "2.0.0",
+            "cors_enabled": True
         }
     except Exception as e:
         return JSONResponse(status_code=500, content={
