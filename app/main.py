@@ -1,4 +1,4 @@
- from typing import List, Optional
+from typing import List, Optional
 from fastapi import FastAPI, UploadFile, Form, File, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
