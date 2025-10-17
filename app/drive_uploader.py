@@ -19,7 +19,11 @@ TOKEN_FILE = Path("/tmp/google_token.json")
 def get_authenticated_service():
     """Crea el servicio autenticado de Google Drive con auto-renovación"""
     if not all([CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN]):
-        raise ValueError("Faltan credenciales de Google. Verifica las variables de entorno.")
+        error_msg = "❌ Faltan credenciales de Google Drive:\n"
+        if not CLIENT_ID: error_msg += "  - GOOGLE_CLIENT_ID\n"
+        if not CLIENT_SECRET: error_msg += "  - GOOGLE_CLIENT_SECRET\n"
+        if not REFRESH_TOKEN: error_msg += "  - GOOGLE_REFRESH_TOKEN\n"
+        raise ValueError(error_msg)
     
     creds = None
     
@@ -40,18 +44,48 @@ def get_authenticated_service():
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             print("🔄 Renovando token expirado...")
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except Exception as e:
+                # ⚠️ NUEVO: Mejor manejo de errores
+                error_str = str(e)
+                if 'invalid_grant' in error_str:
+                    raise Exception(
+                        "❌ ERROR CRÍTICO: El GOOGLE_REFRESH_TOKEN ha expirado o fue revocado.\n\n"
+                        "SOLUCIÓN:\n"
+                        "1. Ejecuta el script 'regenerar_token.py' localmente\n"
+                        "2. Copia el nuevo GOOGLE_REFRESH_TOKEN\n"
+                        "3. Actualízalo en Render Dashboard → Environment\n\n"
+                        "O usa Google OAuth Playground:\n"
+                        "https://developers.google.com/oauthplayground/\n\n"
+                        f"Detalles técnicos: {error_str}"
+                    )
+                else:
+                    raise Exception(f"Error renovando token: {error_str}")
         else:
             print("🆕 Creando credenciales desde refresh_token...")
-            creds = Credentials(
-                token=None,
-                refresh_token=REFRESH_TOKEN,
-                token_uri="https://oauth2.googleapis.com/token",
-                client_id=CLIENT_ID,
-                client_secret=CLIENT_SECRET,
-                scopes=["https://www.googleapis.com/auth/drive.file"]
-            )
-            creds.refresh(Request())
+            try:
+                creds = Credentials(
+                    token=None,
+                    refresh_token=REFRESH_TOKEN,
+                    token_uri="https://oauth2.googleapis.com/token",
+                    client_id=CLIENT_ID,
+                    client_secret=CLIENT_SECRET,
+                    scopes=["https://www.googleapis.com/auth/drive.file"]
+                )
+                creds.refresh(Request())
+            except Exception as e:
+                error_str = str(e)
+                if 'invalid_grant' in error_str:
+                    raise Exception(
+                        "❌ ERROR CRÍTICO: El GOOGLE_REFRESH_TOKEN es inválido.\n\n"
+                        "SOLUCIÓN:\n"
+                        "1. Verifica que GOOGLE_REFRESH_TOKEN esté correctamente copiado\n"
+                        "2. Si persiste, genera uno nuevo con 'regenerar_token.py'\n\n"
+                        f"Detalles técnicos: {error_str}"
+                    )
+                else:
+                    raise Exception(f"Error creando credenciales: {error_str}")
         
         # PASO 3: Guardar token renovado
         try:
@@ -69,7 +103,14 @@ def get_authenticated_service():
         except Exception as e:
             print(f"⚠️ No se pudo guardar token: {e}")
     
-    return build('drive', 'v3', credentials=creds)
+    try:
+        service = build('drive', 'v3', credentials=creds)
+        # Verificar que el servicio funciona
+        service.files().list(pageSize=1).execute()
+        print("✅ Conexión a Google Drive exitosa")
+        return service
+    except Exception as e:
+        raise Exception(f"Error construyendo servicio de Drive: {str(e)}")
 
 def create_folder_if_not_exists(service, folder_name, parent_folder_id='root'):
     """Crea una carpeta en Drive si no existe"""
@@ -191,12 +232,16 @@ def upload_to_drive(
                 body={'role': 'reader', 'type': 'anyone'}
             ).execute()
         except Exception as e:
-            print(f"Advertencia: No se pudo hacer público: {e}")
+            print(f"⚠️ No se pudo hacer público: {e}")
         
-        return file.get('webViewLink', f"https://drive.google.com/file/d/{file.get('id')}/view")
+        link = file.get('webViewLink', f"https://drive.google.com/file/d/{file.get('id')}/view")
+        print(f"✅ Archivo subido: {filename}")
+        return link
         
     except Exception as e:
-        raise Exception(f"Error subiendo archivo a Drive: {str(e)}")
+        error_msg = f"Error subiendo archivo a Drive: {str(e)}"
+        print(f"❌ {error_msg}")
+        raise Exception(error_msg)
 
 def get_folder_link(empresa: str) -> str:
     """Obtiene el link de la carpeta de una empresa"""
