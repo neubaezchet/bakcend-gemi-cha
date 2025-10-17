@@ -4,7 +4,7 @@ Modelos SQLAlchemy para gestión de casos de incapacidades
 VERSIÓN CORREGIDA - 2024
 """
 
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum, JSON
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum, JSON, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -224,10 +224,10 @@ else:
     engine = create_engine(
         database_url,
         echo=False,
-        pool_pre_ping=True,      # Verifica conexiones antes de usarlas
-        pool_recycle=3600,       # Recicla conexiones cada hora
-        pool_size=10,            # Tamaño del pool
-        max_overflow=20,         # Conexiones adicionales permitidas
+        pool_pre_ping=True,
+        pool_recycle=3600,
+        pool_size=10,
+        max_overflow=20,
         connect_args={
             "connect_timeout": 10,
             "options": "-c timezone=America/Bogota"
@@ -246,7 +246,7 @@ def init_db():
         # Verificar conexión
         db = SessionLocal()
         try:
-            db.execute("SELECT 1")
+            db.execute(text("SELECT 1"))
             if database_url.startswith("postgresql"):
                 print("✅ Conexión a PostgreSQL exitosa")
             else:
