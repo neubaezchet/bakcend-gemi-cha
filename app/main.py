@@ -17,17 +17,15 @@ from app.database import (
     EstadoCaso, EstadoDocumento, TipoIncapacidad
 )
 from app.validador import router as validador_router
+from app.sync_excel import sincronizar_empleado_desde_excel  # ✅ NUEVO
 
-# Importar Brevo
 import sib_api_v3_sdk
 from sib_api_v3_sdk.rest import ApiException
 
 app = FastAPI(title="IncaNeurobaeza API", version="2.0.0")
 
-# ==================== CORS DEFINITIVO ====================
 app.add_middleware(
     CORSMiddleware,
-    # Permitir todos los orígenes temporalmente para diagnóstico
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
@@ -35,76 +33,59 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-# Incluir router del portal de validadores
 app.include_router(validador_router)
 
-# Ruta al Excel de empleados (para migración inicial)
 DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "base_empleados.xlsx")
-
 
 # ==================== INICIALIZACIÓN ====================
 
 from app.sync_scheduler import iniciar_sincronizacion_automatica
 
-# Variable global para el scheduler
 scheduler = None
 
 @app.on_event("startup")
 def startup_event():
-    """Inicializa la base de datos y sincronización al arrancar"""
     global scheduler
-    
     init_db()
-    print("🚀 API iniciada correctamente")
-    
-    # Iniciar sincronización automática Excel → PostgreSQL cada 5 minutos
+    print("🚀 API iniciada")
     try:
         scheduler = iniciar_sincronizacion_automatica()
         print("✅ Sincronización automática activada")
     except Exception as e:
-        print(f"⚠️ Error iniciando sincronización: {e}")
+        print(f"⚠️ Error iniciando sync: {e}")
 
 @app.on_event("shutdown")
 def shutdown_event():
-    """Detiene el scheduler al cerrar la aplicación"""
     global scheduler
     if scheduler:
         scheduler.shutdown()
-        print("🛑 Sincronización automática detenida")
+        print("🛑 Sincronización detenida")
 
 # ==================== UTILIDADES ====================
 
 def get_current_quinzena():
-    """Obtiene la quincena actual para el mensaje"""
     today = date.today()
     mes_nombre = calendar.month_name[today.month]
-    if today.day <= 15:
-        return f"primera quincena de {mes_nombre}"
-    else:
-        return f"segunda quincena de {mes_nombre}"
+    return f"primera quincena de {mes_nombre}" if today.day <= 15 else f"segunda quincena de {mes_nombre}"
 
 def send_html_email(to_email: str, subject: str, html_body: str, text_body: str = None):
-    """Envía emails usando Brevo API"""
     brevo_api_key = os.environ.get("BREVO_API_KEY")
     brevo_from_email = os.environ.get("BREVO_FROM_EMAIL", "notificaciones@smtp-brevo.com")
     reply_to_email = os.environ.get("SMTP_EMAIL", "davidbaezaospino@gmail.com")
 
     if not brevo_api_key:
-        error_msg = "Error: Falta la variable de entorno BREVO_API_KEY"
-        print(error_msg)
-        return False, error_msg
+        print("Error: Falta BREVO_API_KEY")
+        return False, "Falta BREVO_API_KEY"
 
     try:
-        print(f"📧 Intentando enviar correo a {to_email} con Brevo...")
+        print(f"📧 Enviando correo a {to_email}...")
         
         configuration = sib_api_v3_sdk.Configuration()
         configuration.api_key['api-key'] = brevo_api_key
         api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
         
-        if isinstance(html_body, bytes):
-            html_body = html_body.decode('utf-8')
-        if text_body and isinstance(text_body, bytes):
-            text_body = text_body.decode('utf-8')
+        if isinstance(html_body, bytes): html_body = html_body.decode('utf-8')
+        if text_body and isinstance(text_body, bytes): text_body = text_body.decode('utf-8')
         
         send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
             to=[{"email": to_email}],
@@ -116,22 +97,17 @@ def send_html_email(to_email: str, subject: str, html_body: str, text_body: str 
         )
         
         api_response = api_instance.send_transac_email(send_smtp_email)
-        
-        print(f"✅ Correo enviado exitosamente a {to_email}")
-        print(f"   Message ID: {api_response.message_id}")
+        print(f"✅ Correo enviado (ID: {api_response.message_id})")
         return True, None
         
     except ApiException as e:
-        error_msg = f"Error de Brevo API: {e}"
-        print(f"❌ {error_msg}")
-        return False, error_msg
+        print(f"❌ Error Brevo: {e}")
+        return False, str(e)
     except Exception as e:
-        error_msg = f"Error enviando correo: {e}"
-        print(f"❌ {error_msg}")
+        print(f"❌ Error: {e}")
         return False, str(e)
 
 def mapear_tipo_incapacidad(tipo_frontend: str) -> TipoIncapacidad:
-    """Mapea el tipo de incapacidad del frontend al enum de BD"""
     tipo_map = {
         'maternity': TipoIncapacidad.MATERNIDAD,
         'paternidad': TipoIncapacidad.PATERNIDAD,
@@ -150,19 +126,14 @@ def root():
     return {
         "message": "✅ API IncaNeurobaeza v2.0 - Trabajando para ayudarte",
         "status": "online",
-        "cors": "enabled",
-        "endpoints": {
-            "trabajadores": "/empleados/{cedula}, /subir-incapacidad/",
-            "validadores": "/validador/* (requiere X-Admin-Token)",
-            "docs": "/docs"
-        }
+        "cors": "enabled"
     }
 
 @app.get("/empleados/{cedula}")
 def obtener_empleado(cedula: str, db: Session = Depends(get_db)):
-    """Consulta empleado por cédula (para frontend de trabajadores)"""
+    """Consulta empleado (con sync instantánea)"""
     
-    # Intentar en BD primero
+    # PASO 1: Buscar en BD
     empleado = db.query(Employee).filter(Employee.cedula == cedula).first()
     
     if empleado:
@@ -173,22 +144,21 @@ def obtener_empleado(cedula: str, db: Session = Depends(get_db)):
             "eps": empleado.eps
         }
     
-    # Si no está en BD, intentar en Excel (fallback)
-    try:
-        if os.path.exists(DATA_PATH):
-            df = pd.read_excel(DATA_PATH)
-            empleado_excel = df[df["cedula"] == int(cedula)]
-            if not empleado_excel.empty:
-                return {
-                    "nombre": empleado_excel.iloc[0]["nombre"],
-                    "empresa": empleado_excel.iloc[0]["empresa"],
-                    "correo": empleado_excel.iloc[0]["correo"],
-                    "eps": empleado_excel.iloc[0].get("eps", None)
-                }
-    except Exception as e:
-        print(f"Error leyendo Excel: {e}")
+    # PASO 2: Sincronizar desde Excel
+    print(f"🔄 Sync instantánea para {cedula}...")
+    empleado_sync = sincronizar_empleado_desde_excel(cedula)
+    
+    if empleado_sync:
+        return {
+            "nombre": empleado_sync.nombre,
+            "empresa": empleado_sync.empresa.nombre if empleado_sync.empresa else "No especificada",
+            "correo": empleado_sync.correo,
+            "eps": empleado_sync.eps
+        }
     
     return JSONResponse(status_code=404, content={"error": "Empleado no encontrado"})
+
+# ==================== CONTINUACIÓN DE main.py ====================
 
 @app.post("/subir-incapacidad/")
 async def subir_incapacidad(
@@ -204,7 +174,7 @@ async def subir_incapacidad(
     subType: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
-    """Endpoint de recepción de incapacidades (trabajadores)"""
+    """Endpoint de recepción de incapacidades"""
     
     empleado_bd = db.query(Employee).filter(Employee.cedula == cedula).first()
     
@@ -212,8 +182,7 @@ async def subir_incapacidad(
         try:
             if os.path.exists(DATA_PATH):
                 df = pd.read_excel(DATA_PATH)
-                empleado_excel = df[df["cedula"] == int(cedula)]
-                empleado_encontrado = not empleado_excel.empty
+                empleado_encontrado = not df[df["cedula"] == int(cedula)].empty
             else:
                 empleado_encontrado = False
         except:
@@ -234,7 +203,7 @@ async def subir_incapacidad(
             return JSONResponse(status_code=409, content={
                 "bloqueo": True,
                 "serial_pendiente": caso_bloqueante.serial,
-                "mensaje": f"Tienes un caso pendiente ({caso_bloqueante.serial}) que debe completarse antes de subir uno nuevo."
+                "mensaje": f"Caso pendiente ({caso_bloqueante.serial}) debe completarse primero."
             })
     
     metadata_form = {}
@@ -302,7 +271,7 @@ async def subir_incapacidad(
     db.commit()
     db.refresh(nuevo_caso)
     
-    print(f"✅ Caso {consecutivo} persistido en BD con ID {nuevo_caso.id}")
+    print(f"✅ Caso {consecutivo} guardado (ID {nuevo_caso.id})")
     
     quinzena_actual = get_current_quinzena()
     
@@ -322,17 +291,15 @@ async def subir_incapacidad(
             telefono=telefono
         )
         
-        text_empleado = f"""
-        Buen día {nombre},
+        text_empleado = f"""Buen día {nombre},
         
-        Confirmo recibido de la documentación correspondiente.
-        Consecutivo: {consecutivo}
-        Empresa: {empresa_reg}
-        Link del archivo: {link_pdf}
-        
-        --
-        IncaNeurobaeza
-        """
+Confirmo recibido de la documentación.
+Consecutivo: {consecutivo}
+Empresa: {empresa_reg}
+Link: {link_pdf}
+
+--
+IncaNeurobaeza"""
         
         emails_to_send = []
         if correo_empleado:
@@ -343,7 +310,7 @@ async def subir_incapacidad(
         for email_dest in emails_to_send:
             send_html_email(
                 email_dest, 
-                f"Confirmación Recepción Incapacidad - {consecutivo}",
+                f"Confirmación Recepción - {consecutivo}",
                 html_empleado,
                 text_empleado
             )
@@ -362,13 +329,13 @@ async def subir_incapacidad(
         
         send_html_email(
             "xoblaxbaezaospino@gmail.com", 
-            f"Copia Registro Incapacidad - {consecutivo} - {empresa_reg}",
+            f"Copia Registro - {consecutivo} - {empresa_reg}",
             html_supervision
         )
         
         return {
             "status": "ok",
-            "mensaje": f"Registro exitoso. Caso persistido en BD.",
+            "mensaje": "Registro exitoso",
             "consecutivo": consecutivo,
             "case_id": nuevo_caso.id,
             "link_pdf": link_pdf,
@@ -386,7 +353,7 @@ async def subir_incapacidad(
             quinzena=quinzena_actual
         )
         
-        html_confirmacion_no_registrado = f"""
+        html_confirmacion = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px 10px 0 0; text-align: center;">
                 <h1>IncaNeurobaeza</h1>
@@ -394,31 +361,22 @@ async def subir_incapacidad(
             </div>
             <div style="padding: 30px 20px;">
                 <p>Buen día,</p>
-                <p>Confirmo recibido de la documentación correspondiente. Su solicitud está siendo revisada.</p>
+                <p>Confirmo recibido de la documentación. Su solicitud está siendo revisada.</p>
                 <div style="background: #f8f9fa; padding: 15px; border-left: 4px solid #667eea; margin: 20px 0;">
                     <strong>Consecutivo:</strong> {consecutivo}<br>
                     <strong>Cédula:</strong> {cedula}
                 </div>
-                <p><strong>Importante:</strong> Su cédula no se encuentra en nuestra base de datos. Nos comunicaremos con usted para validar la información.</p>
+                <p><strong>Importante:</strong> Su cédula no está en nuestra base de datos. Nos comunicaremos con usted.</p>
             </div>
         </div>
         """
         
-        send_html_email(
-            email,
-            f"Confirmación Recepción Documentación - {consecutivo}",
-            html_confirmacion_no_registrado
-        )
-        
-        send_html_email(
-            "xoblaxbaezaospino@gmail.com", 
-            f"⚠️ ALERTA: Cédula no encontrada - {consecutivo}",
-            html_alerta
-        )
+        send_html_email(email, f"Confirmación - {consecutivo}", html_confirmacion)
+        send_html_email("xoblaxbaezaospino@gmail.com", f"⚠️ ALERTA Cédula no encontrada - {consecutivo}", html_alerta)
         
         return {
             "status": "warning",
-            "mensaje": "Cédula no encontrada - Documentación recibida para revisión",
+            "mensaje": "Cédula no encontrada - Documentación recibida",
             "consecutivo": consecutivo,
             "case_id": nuevo_caso.id,
             "link_pdf": link_pdf,
@@ -427,16 +385,13 @@ async def subir_incapacidad(
 
 @app.post("/admin/migrar-excel")
 async def migrar_excel_a_bd(db: Session = Depends(get_db)):
-    """Migra los empleados desde el Excel a la base de datos"""
+    """Migra empleados desde Excel a BD"""
     
     if not os.path.exists(DATA_PATH):
-        return JSONResponse(status_code=404, content={
-            "error": f"Archivo Excel no encontrado en {DATA_PATH}"
-        })
+        return JSONResponse(status_code=404, content={"error": f"Excel no encontrado en {DATA_PATH}"})
     
     try:
         df = pd.read_excel(DATA_PATH)
-        
         migraciones = 0
         errores = []
         
@@ -450,7 +405,6 @@ async def migrar_excel_a_bd(db: Session = Depends(get_db)):
                     db.add(company)
                     db.commit()
                     db.refresh(company)
-                    print(f"✅ Empresa creada: {empresa_nombre}")
                 
                 cedula = str(row["cedula"])
                 empleado_existente = db.query(Employee).filter(Employee.cedula == cedula).first()
@@ -468,11 +422,9 @@ async def migrar_excel_a_bd(db: Session = Depends(get_db)):
                     db.add(nuevo_empleado)
                     db.commit()
                     migraciones += 1
-                    print(f"✅ Empleado migrado: {row['nombre']} ({cedula})")
                 
             except Exception as e:
-                errores.append(f"Error en fila {row.get('cedula', 'N/A')}: {str(e)}")
-                print(f"❌ {errores[-1]}")
+                errores.append(f"Error en {row.get('cedula', 'N/A')}: {str(e)}")
         
         return {
             "status": "ok",
@@ -482,15 +434,14 @@ async def migrar_excel_a_bd(db: Session = Depends(get_db)):
         }
         
     except Exception as e:
-        return JSONResponse(status_code=500, content={
-            "error": f"Error en migración: {str(e)}"
-        })
+        return JSONResponse(status_code=500, content={"error": f"Error: {str(e)}"})
 
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):
-    """Verifica el estado de la API y la BD"""
+    """Verifica estado de API y BD"""
     try:
-        db.execute("SELECT 1")
+        from sqlalchemy import text
+        db.execute(text("SELECT 1"))
         return {
             "status": "healthy",
             "database": "connected",
