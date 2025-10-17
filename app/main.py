@@ -24,25 +24,15 @@ from sib_api_v3_sdk.rest import ApiException
 
 app = FastAPI(title="IncaNeurobaeza API", version="2.0.0")
 
-# ==================== CORS ACTUALIZADO ====================
+# ==================== CORS DEFINITIVO ====================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        # Frontend de Validadores (Vercel)
-        "https://portal-neurobaeza.vercel.app",
-        "https://portal-neurobaeza-*.vercel.app",
-        
-        # Frontend de Trabajadores (Vercel - si existe)
-        "https://repogemin.vercel.app",
-        "https://repogemin-*.vercel.app",
-        
-        # Desarrollo local
-        "http://localhost:3000",
-        "http://localhost:8000",
-    ],
+    # Permitir todos los orígenes temporalmente para diagnóstico
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Incluir router del portal de validadores
@@ -160,6 +150,7 @@ def root():
     return {
         "message": "✅ API IncaNeurobaeza v2.0 - Trabajando para ayudarte",
         "status": "online",
+        "cors": "enabled",
         "endpoints": {
             "trabajadores": "/empleados/{cedula}, /subir-incapacidad/",
             "validadores": "/validador/* (requiere X-Admin-Token)",
