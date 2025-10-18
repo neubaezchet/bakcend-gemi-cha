@@ -47,7 +47,6 @@ def get_authenticated_service():
             try:
                 creds.refresh(Request())
             except Exception as e:
-                # ⚠️ NUEVO: Mejor manejo de errores
                 error_str = str(e)
                 if 'invalid_grant' in error_str:
                     raise Exception(
@@ -56,8 +55,6 @@ def get_authenticated_service():
                         "1. Ejecuta el script 'regenerar_token.py' localmente\n"
                         "2. Copia el nuevo GOOGLE_REFRESH_TOKEN\n"
                         "3. Actualízalo en Render Dashboard → Environment\n\n"
-                        "O usa Google OAuth Playground:\n"
-                        "https://developers.google.com/oauthplayground/\n\n"
                         f"Detalles técnicos: {error_str}"
                     )
                 else:
@@ -178,7 +175,22 @@ def upload_to_drive(
     tiene_soat: bool = None,
     tiene_licencia: bool = None
 ) -> str:
-    """Sube archivo a Google Drive con estructura de carpetas"""
+    """
+    Sube archivo a Google Drive con estructura de carpetas COMPLETA
+    
+    Estructura:
+    Incapacidades/
+    └── {Empresa}/
+        └── {Año}/
+            └── {Quincena}/
+                ├── Maternidad/
+                ├── Paternidad/
+                │   ├── Con_Licencia/
+                │   └── Sin_Licencia/
+                └── Accidente_Transito/
+                    ├── Con_SOAT/
+                    └── Sin_SOAT/
+    """
     try:
         service = get_authenticated_service()
         
@@ -196,7 +208,7 @@ def upload_to_drive(
         
         final_folder_id = tipo_folder_id
         
-        # Subcarpetas especiales
+        # ✅ RECUPERADO: Subcarpetas especiales
         if tipo_normalizado == 'Accidente_Transito' and tiene_soat is not None:
             subfolder_name = 'Con_SOAT' if tiene_soat else 'Sin_SOAT'
             final_folder_id = create_folder_if_not_exists(service, subfolder_name, tipo_folder_id)
