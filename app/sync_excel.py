@@ -240,7 +240,7 @@ Para que funcione, tu Google Sheet **debe ser público**:
 
 1. Abre tu Google Sheet:
 ```
-   https://docs.google.com/spreadsheets/d/1POt2ytSN61XbSpXUSUPyHdOVy2g7CRas/edit
+   "https://docs.google.com/spreadsheets/d/1POt2ytSN61XbSpXUSUPyHdOVy2g7CRas/edit"
 ```
 
 2. Click en **"Compartir"** (arriba derecha)
