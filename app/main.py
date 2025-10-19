@@ -18,6 +18,7 @@ from app.database import (
 )
 from app.validador import router as validador_router
 from app.sync_excel import sincronizar_empleado_desde_excel  # ✅ NUEVO
+from app.serial_generator import generar_serial_unico  # ✅ NUEVO
 
 import sib_api_v3_sdk
 from sib_api_v3_sdk.rest import ApiException
@@ -197,7 +198,12 @@ async def subir_incapacidad(
         except:
             empleado_encontrado = False
     
-    consecutivo = f"INC-{str(uuid.uuid4())[:8].upper()}"
+    # ✅ Generar serial único basado en nombre y cédula
+if empleado_bd:
+    consecutivo = generar_serial_unico(db, empleado_bd.nombre, cedula)
+else:
+    # Si no hay empleado, usar iniciales genéricas
+    consecutivo = generar_serial_unico(db, "DESCONOCIDO", cedula)
     
     if empleado_bd:
         caso_bloqueante = db.query(Case).filter(

@@ -111,13 +111,16 @@ def get_authenticated_service():
 
 def create_folder_if_not_exists(service, folder_name, parent_folder_id='root'):
     """Crea una carpeta en Drive si no existe"""
-    query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and parents in '{parent_folder_id}'"
-    results = service.files().list(q=query, fields="files(id, name)").execute()
+    # ✅ CRÍTICO: Buscar en el parent correcto, no en toda la unidad
+    query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and '{parent_folder_id}' in parents and trashed=false"
+    results = service.files().list(q=query, spaces='drive', fields="files(id, name)").execute()
     folders = results.get('files', [])
     
     if folders:
+        print(f"📁 Carpeta '{folder_name}' ya existe (ID: {folders[0]['id']})")
         return folders[0]['id']
     
+    # Si no existe, crearla
     folder_metadata = {
         'name': folder_name,
         'mimeType': 'application/vnd.google-apps.folder',
@@ -125,6 +128,7 @@ def create_folder_if_not_exists(service, folder_name, parent_folder_id='root'):
     }
     
     folder = service.files().create(body=folder_metadata, fields='id').execute()
+    print(f"✅ Carpeta '{folder_name}' creada (ID: {folder.get('id')})")
     return folder.get('id')
 
 def get_quinzena_folder_name():
@@ -145,8 +149,14 @@ def get_quinzena_folder_name():
     else:
         return f"Segunda_Quincena_{mes_es}"
 
-def normalize_tipo_incapacidad(tipo: str) -> str:
+def normalize_tipo_incapacidad(tipo: str, subtipo: str = None) -> str:
     """Normaliza el tipo de incapacidad al formato de carpeta"""
+    # ✅ NUEVO: Si subtipo existe, usarlo para especificar mejor
+    if subtipo:
+        tipo_a_usar = subtipo
+    else:
+        tipo_a_usar = tipo
+    
     tipo_map = {
         'maternidad': 'Maternidad',
         'maternity': 'Maternidad',
@@ -164,7 +174,7 @@ def normalize_tipo_incapacidad(tipo: str) -> str:
         'traffic': 'Accidente_Transito',
         'especial': 'Enfermedad_Especial'
     }
-    return tipo_map.get(tipo.lower(), tipo.replace(' ', '_').title())
+    return tipo_map.get(tipo_a_usar.lower(), tipo_a_usar.replace(' ', '_').title())
 
 def upload_to_drive(
     file_path: Path, 
@@ -173,7 +183,8 @@ def upload_to_drive(
     tipo: str, 
     consecutivo: str = None,
     tiene_soat: bool = None,
-    tiene_licencia: bool = None
+    tiene_licencia: bool = None,
+    subtipo: str = None  # ✅ NUEVO: Para especificar mejor el tipo
 ) -> str:
     """
     Sube archivo a Google Drive con estructura de carpetas COMPLETA
@@ -197,24 +208,40 @@ def upload_to_drive(
         año_actual = str(datetime.now().year)
         fecha = datetime.now().strftime("%Y%m%d")
         
-        # Crear estructura: Incapacidades/{Empresa}/{Año}/{Quincena}/{Tipo}/[Subcarpeta]
-        main_folder_id = create_folder_if_not_exists(service, "Incapacidades")
-        empresa_folder_id = create_folder_if_not_exists(service, empresa, main_folder_id)
-        year_folder_id = create_folder_if_not_exists(service, año_actual, empresa_folder_id)
-        quinzena_folder_id = create_folder_if_not_exists(service, get_quinzena_folder_name(), year_folder_id)
+        # ✅ CRÍTICO: Crear estructura desde "root" (Mi unidad)
+        # Paso 1: Crear/encontrar carpeta "Incapacidades" en Mi unidad
+        print("📁 Buscando/creando carpeta 'Incapacidades' en Mi unidad...")
+        main_folder_id = create_folder_if_not_exists(service, "Incapacidades", parent_folder_id='root')
         
-        tipo_normalizado = normalize_tipo_incapacidad(tipo)
+        # Paso 2: Crear/encontrar carpeta de empresa
+        print(f"📁 Buscando/creando carpeta '{empresa}'...")
+        empresa_folder_id = create_folder_if_not_exists(service, empresa, main_folder_id)
+        
+        # Paso 3: Crear/encontrar carpeta del año
+        print(f"📁 Buscando/creando carpeta '{año_actual}'...")
+        year_folder_id = create_folder_if_not_exists(service, año_actual, empresa_folder_id)
+        
+        # Paso 4: Crear/encontrar carpeta de quincena
+        quinzena_nombre = get_quinzena_folder_name()
+        print(f"📁 Buscando/creando carpeta '{quinzena_nombre}'...")
+        quinzena_folder_id = create_folder_if_not_exists(service, quinzena_nombre, year_folder_id)
+        
+        # Paso 5: Crear/encontrar carpeta del tipo de incapacidad
+        tipo_normalizado = normalize_tipo_incapacidad(tipo, subtipo)
+        print(f"📁 Buscando/creando carpeta '{tipo_normalizado}'...")
         tipo_folder_id = create_folder_if_not_exists(service, tipo_normalizado, quinzena_folder_id)
         
         final_folder_id = tipo_folder_id
         
-        # ✅ RECUPERADO: Subcarpetas especiales
+        # ✅ Subcarpetas especiales
         if tipo_normalizado == 'Accidente_Transito' and tiene_soat is not None:
             subfolder_name = 'Con_SOAT' if tiene_soat else 'Sin_SOAT'
+            print(f"📁 Buscando/creando subcarpeta '{subfolder_name}'...")
             final_folder_id = create_folder_if_not_exists(service, subfolder_name, tipo_folder_id)
         
         elif tipo_normalizado == 'Paternidad' and tiene_licencia is not None:
             subfolder_name = 'Con_Licencia' if tiene_licencia else 'Sin_Licencia'
+            print(f"📁 Buscando/creando subcarpeta '{subfolder_name}'...")
             final_folder_id = create_folder_if_not_exists(service, subfolder_name, tipo_folder_id)
         
         # Nombre del archivo
@@ -222,6 +249,8 @@ def upload_to_drive(
             filename = f"{consecutivo}_{cedula}_{tipo_normalizado}_{fecha}.pdf"
         else:
             filename = f"{cedula}_{tipo_normalizado}_{fecha}.pdf"
+        
+        print(f"📤 Subiendo archivo: {filename}")
         
         file_metadata = {
             'name': filename,
@@ -247,7 +276,8 @@ def upload_to_drive(
             print(f"⚠️ No se pudo hacer público: {e}")
         
         link = file.get('webViewLink', f"https://drive.google.com/file/d/{file.get('id')}/view")
-        print(f"✅ Archivo subido: {filename}")
+        print(f"✅ Archivo subido exitosamente")
+        print(f"🔗 Link: {link}")
         return link
         
     except Exception as e:
