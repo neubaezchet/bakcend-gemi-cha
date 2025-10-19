@@ -197,28 +197,27 @@ async def subir_incapacidad(
                 empleado_encontrado = False
         except:
             empleado_encontrado = False
-    
-    # ✅ Generar serial único basado en nombre y cédula
-if empleado_bd:
-    consecutivo = generar_serial_unico(db, empleado_bd.nombre, cedula)
-else:
-    # Si no hay empleado, usar iniciales genéricas
-    consecutivo = generar_serial_unico(db, "DESCONOCIDO", cedula)
-    
+ # ✅ Generar serial único basado en nombre y cédula
     if empleado_bd:
-        caso_bloqueante = db.query(Case).filter(
-            Case.employee_id == empleado_bd.id,
-            Case.estado.in_([EstadoCaso.INCOMPLETA, EstadoCaso.ILEGIBLE, EstadoCaso.INCOMPLETA_ILEGIBLE]),
-            Case.bloquea_nueva == True
-        ).first()
-        
-        if caso_bloqueante:
-            return JSONResponse(status_code=409, content={
-                "bloqueo": True,
-                "serial_pendiente": caso_bloqueante.serial,
-                "mensaje": f"Caso pendiente ({caso_bloqueante.serial}) debe completarse primero."
-            })
+      consecutivo = generar_serial_unico(db, empleado_bd.nombre, cedula)
+    else:
+      # Si no hay empleado, usar iniciales genéricas
+      consecutivo = generar_serial_unico(db, "DESCONOCIDO", cedula)
     
+    # Verificar si hay casos bloqueantes
+    if empleado_bd:
+      caso_bloqueante = db.query(Case).filter(
+        Case.employee_id == empleado_bd.id,
+        Case.estado.in_([EstadoCaso.INCOMPLETA, EstadoCaso.ILEGIBLE, EstadoCaso.INCOMPLETA_ILEGIBLE]),
+        Case.bloquea_nueva == True
+      ).first()
+      
+      if caso_bloqueante:
+        return JSONResponse(status_code=409, content={
+          "bloqueo": True,
+          "serial_pendiente": caso_bloqueante.serial,
+          "mensaje": f"Caso pendiente ({caso_bloqueante.serial}) debe completarse primero."
+        })
     metadata_form = {}
     tiene_soat = None
     tiene_licencia = None
