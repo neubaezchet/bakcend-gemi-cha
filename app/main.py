@@ -17,7 +17,7 @@ from app.database import (
     EstadoCaso, EstadoDocumento, TipoIncapacidad
 )
 from app.validador import router as validador_router
-from app.sync_excel import sincronizar_empleado_desde_excel  # ✅ NUEVO
+from app.sync_excel import sincronizar_empleado_desde_excel  # ✅ MANTENER
 
 import sib_api_v3_sdk
 from sib_api_v3_sdk.rest import ApiException
@@ -158,8 +158,6 @@ def obtener_empleado(cedula: str, db: Session = Depends(get_db)):
     
     return JSONResponse(status_code=404, content={"error": "Empleado no encontrado"})
 
-# ==================== CONTINUACIÓN DE main.py ====================
-
 @app.post("/subir-incapacidad/")
 async def subir_incapacidad(
     cedula: str = Form(...),
@@ -176,9 +174,18 @@ async def subir_incapacidad(
 ):
     """Endpoint de recepción de incapacidades"""
     
+    # ✅ PASO 1: Verificar en BD (búsqueda instantánea)
     empleado_bd = db.query(Employee).filter(Employee.cedula == cedula).first()
     
+    # ✅ PASO 2: Si NO está en BD, sincronizar desde Excel
     if not empleado_bd:
+        print(f"🔄 Sincronización instantánea para {cedula}...")
+        empleado_bd = sincronizar_empleado_desde_excel(cedula)
+    
+    # ✅ PASO 3: Determinar si el empleado fue encontrado (en BD o Excel)
+    if empleado_bd:
+        empleado_encontrado = True
+    else:
         try:
             if os.path.exists(DATA_PATH):
                 df = pd.read_excel(DATA_PATH)
@@ -187,8 +194,6 @@ async def subir_incapacidad(
                 empleado_encontrado = False
         except:
             empleado_encontrado = False
-    else:
-        empleado_encontrado = True
     
     consecutivo = f"INC-{str(uuid.uuid4())[:8].upper()}"
     
@@ -271,7 +276,7 @@ async def subir_incapacidad(
     db.commit()
     db.refresh(nuevo_caso)
     
-    print(f"✅ Caso {consecutivo} guardado (ID {nuevo_caso.id})")
+    print(f"✅ Caso {consecutivo} guardado (ID {nuevo_caso.id}) - Empresa: {empleado_bd.empresa.nombre if empleado_bd and empleado_bd.empresa else 'N/A'}")
     
     quinzena_actual = get_current_quinzena()
     
