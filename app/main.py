@@ -17,7 +17,7 @@ from app.database import (
     EstadoCaso, EstadoDocumento, TipoIncapacidad
 )
 from app.validador import router as validador_router
-from app.sync_excel import sincronizar_empleado_desde_excel  # ✅ MANTENER
+from app.sync_excel import sincronizar_empleado_desde_excel  # ✅ NUEVO
 
 import sib_api_v3_sdk
 from sib_api_v3_sdk.rest import ApiException
@@ -158,6 +158,8 @@ def obtener_empleado(cedula: str, db: Session = Depends(get_db)):
     
     return JSONResponse(status_code=404, content={"error": "Empleado no encontrado"})
 
+# ==================== CONTINUACIÓN DE main.py ====================
+
 @app.post("/subir-incapacidad/")
 async def subir_incapacidad(
     cedula: str = Form(...),
@@ -174,7 +176,7 @@ async def subir_incapacidad(
 ):
     """Endpoint de recepción de incapacidades"""
     
-    # ✅ PASO 1: Verificar en BD (búsqueda instantánea)
+   # ✅ PASO 1: Verificar en BD (búsqueda instantánea)
     empleado_bd = db.query(Employee).filter(Employee.cedula == cedula).first()
     
     # ✅ PASO 2: Si NO está en BD, sincronizar desde Excel
