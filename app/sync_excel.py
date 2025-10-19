@@ -14,7 +14,7 @@ from io import BytesIO
 # ==================== CONFIGURACIÓN ====================
 # ID del archivo de Google Drive (extraído de tu enlace)
 GOOGLE_DRIVE_FILE_ID = "1POt2ytSN61XbSpXUSUPyHdOVy2g7CRas"
-EXCEL_DOWNLOAD_URL = f"https://docs.google.com/spreadsheets/d/{GOOGLE_DRIVE_FILE_ID}/export?format=xlsx"
+EXCEL_DOWNLOAD_URL = f"https://docs.google.com/spreadsheets/d/1POt2ytSN61XbSpXUSUPyHdOVy2g7CRas/edit?usp=sharing&ouid=109080049357282633841&rtpof=true&sd=true"
 
 # Caché local (Render usa /tmp)
 LOCAL_CACHE_PATH = "/tmp/base_empleados_cache.xlsx"
