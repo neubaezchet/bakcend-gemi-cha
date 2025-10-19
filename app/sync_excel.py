@@ -14,7 +14,9 @@ from io import BytesIO
 # ==================== CONFIGURACIÓN ====================
 # ID del archivo de Google Drive (extraído de tu enlace)
 GOOGLE_DRIVE_FILE_ID = "1POt2ytSN61XbSpXUSUPyHdOVy2g7CRas"
-EXCEL_DOWNLOAD_URL = f"https://docs.google.com/spreadsheets/d/1POt2ytSN61XbSpXUSUPyHdOVy2g7CRas/edit?usp=sharing&ouid=109080049357282633841&rtpof=true&sd=true"
+
+# URL de descarga directa (formato XLSX)
+EXCEL_DOWNLOAD_URL = f"https://docs.google.com/spreadsheets/d/{GOOGLE_DRIVE_FILE_ID}/export?format=xlsx"
 
 # Caché local (Render usa /tmp)
 LOCAL_CACHE_PATH = "/tmp/base_empleados_cache.xlsx"
@@ -232,22 +234,17 @@ def sincronizar_excel_completo():
 
 ---
 
-## 🔒 **PASO 2: Hacer el Google Sheets PÚBLICO**
+## 🔒 Hacer el Google Sheet Público
 
-**IMPORTANTE**: El enlace que me diste requiere autenticación. Necesitas hacerlo público.
+Para que funcione, tu Google Sheet **debe ser público**:
 
-### **2.1 Ir a tu Google Sheet:**
+1. Abre tu Google Sheet:
 ```
-https://docs.google.com/spreadsheets/d/1POt2ytSN61XbSpXUSUPyHdOVy2g7CRas/edit?usp=sharing&ouid=109080049357282633841&rtpof=true&sd=true
-```
-
-### **2.2 Click en "Compartir" (arriba derecha)**
-
-### **2.3 En "Acceso general", cambiar a:**
-```
-✅ Cualquier persona con el enlace → Lector
+   https://docs.google.com/spreadsheets/d/1POt2ytSN61XbSpXUSUPyHdOVy2g7CRas/edit
 ```
 
-### **2.4 Click en "Copiar enlace" y verifica que sea así:**
+2. Click en **"Compartir"** (arriba derecha)
+
+3. En **"Acceso general"**, cambiar a:
 ```
-https://docs.google.com/spreadsheets/d/1POt2ytSN61XbSpXUSUPyHdOVy2g7CRas/edit?usp=sharing&ouid=109080049357282633841&rtpof=true&sd=true
+   ✅ Cualquier persona con el enlace → Lector
