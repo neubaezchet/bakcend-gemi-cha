@@ -1,7 +1,9 @@
 """
 Router del Portal de Validadores - IncaNeurobaeza
 Endpoints para gestión, validación y búsqueda de casos
-"""from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File
 from fastapi.responses import StreamingResponse
 import requests
 import io
@@ -11,7 +13,6 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 import pandas as pd
-import io
 
 from app.database import (
     get_db, Case, CaseDocument, CaseEvent, CaseNote, Employee, 
