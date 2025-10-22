@@ -1,9 +1,10 @@
 """
 Router del Portal de Validadores - IncaNeurobaeza
 Endpoints para gestión, validación y búsqueda de casos
-"""
-
-from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File
+"""from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File
+from fastapi.responses import StreamingResponse
+import requests
+import io
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, func
 from typing import List, Optional, Dict, Any
@@ -750,3 +751,59 @@ async def exportar_casos(
     
     else:
         raise HTTPException(status_code=400, detail="Formato no soportado. Use 'xlsx' o 'csv'")
+# Agregar al inicio del archivo, con los otros imports
+from fastapi.responses import FileResponse, StreamingResponse
+import requests
+
+# Agregar este endpoint ANTES del último endpoint en validador.py
+@router.get("/casos/{serial}/pdf")
+async def obtener_pdf_caso(
+    serial: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(verificar_token_admin)
+):
+    """Devuelve el PDF del caso desde Google Drive"""
+    
+    caso = db.query(Case).filter(Case.serial == serial).first()
+    if not caso:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    
+    if not caso.drive_link:
+        raise HTTPException(status_code=404, detail="Este caso no tiene PDF asociado")
+    
+    try:
+        # Extraer el ID del archivo de Google Drive desde el link
+        # Ejemplo: https://drive.google.com/file/d/XXXXXXXX/view
+        drive_id = None
+        if "/file/d/" in caso.drive_link:
+            drive_id = caso.drive_link.split("/file/d/")[1].split("/")[0]
+        elif "id=" in caso.drive_link:
+            drive_id = caso.drive_link.split("id=")[1].split("&")[0]
+        
+        if not drive_id:
+            raise HTTPException(status_code=400, detail="Link de Drive inválido")
+        
+        # URL de descarga directa de Google Drive
+        download_url = f"https://drive.google.com/uc?export=download&id={drive_id}"
+        
+        # Descargar el PDF desde Google Drive
+        response = requests.get(download_url, stream=True)
+        
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Error descargando PDF desde Drive")
+        
+        # Devolver el PDF como streaming response
+        return StreamingResponse(
+            io.BytesIO(response.content),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"inline; filename={serial}.pdf",
+                "Access-Control-Allow-Origin": "*"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error obteniendo PDF para {serial}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error procesando PDF: {str(e)}")
