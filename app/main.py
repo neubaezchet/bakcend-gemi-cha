@@ -36,6 +36,105 @@ app.add_middleware(
 
 app.include_router(validador_router)
 
+# ==================== HEALTH CHECK DE GOOGLE DRIVE ====================
+
+from fastapi import APIRouter
+from app.drive_uploader import (
+    get_authenticated_service, 
+    clear_service_cache, 
+    clear_token_cache,
+    TOKEN_FILE
+)
+import datetime
+import json
+
+drive_router = APIRouter(prefix="/drive", tags=["Google Drive"])
+
+@drive_router.get("/health")
+async def drive_health_check():
+    """
+    Verifica el estado de la conexión con Google Drive
+    Útil para monitoreo con Uptime Robot, etc.
+    """
+    try:
+        service = get_authenticated_service()
+        
+        # Test: listar 1 archivo
+        service.files().list(pageSize=1, fields="files(id)").execute()
+        
+        # Obtener info del token
+        token_info = None
+        if TOKEN_FILE.exists():
+            try:
+                with open(TOKEN_FILE, 'r') as f:
+                    token_data = json.load(f)
+                    expiry_str = token_data.get('expiry')
+                    if expiry_str:
+                        expiry = datetime.datetime.fromisoformat(expiry_str)
+                        now = datetime.datetime.utcnow()
+                        remaining = (expiry - now).total_seconds()
+                        token_info = {
+                            'expires_in_minutes': round(remaining / 60, 1),
+                            'expires_at': expiry_str,
+                            'status': 'valid' if remaining > 0 else 'expired'
+                        }
+            except Exception as e:
+                token_info = {'error': str(e)}
+        
+        return {
+            "status": "healthy",
+            "service": "connected",
+            "token_info": token_info,
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+
+@drive_router.post("/refresh-cache")
+async def refresh_drive_cache():
+    """
+    Fuerza la renovación del cache del servicio
+    Útil si hay problemas y quieres forzar reconexión
+    """
+    try:
+        clear_service_cache()
+        service = get_authenticated_service()
+        return {
+            "status": "ok",
+            "message": "Cache renovado exitosamente"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+@drive_router.post("/clear-all-cache")
+async def clear_all_drive_cache():
+    """
+    Limpia TODO el cache (servicio + token)
+    Útil para debugging o si necesitas forzar re-autenticación completa
+    """
+    try:
+        clear_service_cache()
+        clear_token_cache()
+        service = get_authenticated_service()
+        return {
+            "status": "ok",
+            "message": "Todo el cache limpiado y servicio recreado"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+# Agregar el router al app
+app.include_router(drive_router)
 DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "base_empleados.xlsx")
 
 # ==================== INICIALIZACIÓN ====================
