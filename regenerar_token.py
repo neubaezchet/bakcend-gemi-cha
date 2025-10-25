@@ -9,7 +9,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 CLIENT_ID = "680515257259-9bvnl3cu8cgpit0oak7ljrjvdh8q2rmb.apps.googleusercontent.com"
 CLIENT_SECRET = "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"
 
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
+SCOPES = ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/spreadsheets.readonly']
 
 def main():
     print("=" * 70)
