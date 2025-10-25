@@ -33,3 +33,10 @@ python-dotenv>=1.0.0
 
 # Para descargar PDFs desde Drive (NUEVO)
 requests>=2.31.0
+
+# PDF editing y mejora de calidad (AGREGAR AL FINAL)
+pdf2image>=1.16.0
+opencv-python-headless>=4.8.0
+numpy>=1.24.0
+scikit-image>=0.21.0
+reportlab>=4.0.0
