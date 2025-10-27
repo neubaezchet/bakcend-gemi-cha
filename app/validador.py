@@ -143,7 +143,7 @@ def obtener_email_tthh(empresa_nombre):
         'ABC Corp': 'tthh.abc@example.com',
         'XYZ S.A.S': 'tthh.xyz@example.com',
     }
-    return emails_tthh.get(empresa_nombre, 'tthh@incaneurobaeza.com')
+    return emails_tthh.get(empresa_nombre, 'xoblaxbaezaospino@gmail.com')
 
 # ==================== ENDPOINTS ====================
 
@@ -357,356 +357,6 @@ async def cambiar_estado(
     
     if nuevo_estado in ["INCOMPLETA", "ILEGIBLE", "INCOMPLETA_ILEGIBLE"]:
         caso.bloquea_nueva = True
-    
-    db.commit()
-    
-    return {
-        "status": "ok",
-        "serial": serial,
-        "estado_anterior": estado_anterior,
-        "estado_nuevo": nuevo_estado,
-        "mensaje": f"Estado actualizado a {nuevo_estado}"
-    }
-
-@router.post("/casos/{serial}/validar")
-async def validar_caso_con_checks(
-    serial: str,
-    accion: str,
-    checks: List[str] = [],
-    observaciones: str = "",
-    adjuntos: List[UploadFile] = File(default=[]),
-    db: Session = Depends(get_db),
-    _: bool = Depends(verificar_token_admin)
-):
-    """
-    Endpoint unificado para validaciones con checks y adjuntos en emails
-    Acciones: 'completa', 'incompleta', 'ilegible', 'eps', 'tthh', 'falsa'
-    """
-    caso = db.query(Case).filter(Case.serial == serial).first()
-    if not caso:
-        raise HTTPException(status_code=404, detail="Caso no encontrado")
-    
-    empleado = caso.empleado
-    
-    # Cambiar estado en BD
-    estado_map = {
-        'completa': EstadoCaso.COMPLETA,
-        'incompleta': EstadoCaso.INCOMPLETA,
-        'ilegible': EstadoCaso.ILEGIBLE,
-        'eps': EstadoCaso.EPS_TRANSCRIPCION,
-        'tthh': EstadoCaso.DERIVADO_TTHH,
-        'falsa': EstadoCaso.DERIVADO_TTHH
-    }
-    nuevo_estado = estado_map[accion]
-    caso.estado = nuevo_estado
-    db.commit()
-    
-    # Mover archivo en Drive
-    organizer = CaseFileOrganizer()
-    nuevo_link = organizer.mover_caso_segun_estado(caso, nuevo_estado.value, observaciones)
-    if nuevo_link:
-        caso.drive_link = nuevo_link
-        db.commit()
-    
-    # Procesar adjuntos si los hay
-    adjuntos_paths = []
-    if adjuntos:
-        from app.pdf_editor import PDFAttachmentManager
-        
-        attachment_manager = PDFAttachmentManager()
-        
-        for i, adjunto in enumerate(adjuntos):
-            temp_path = os.path.join(tempfile.gettempdir(), f"{serial}_adjunto_{i}_{adjunto.filename}")
-            with open(temp_path, "wb") as f:
-                f.write(await adjunto.read())
-            adjuntos_paths.append(temp_path)
-    
-    # Enviar emails
-    if accion != 'tthh':
-        email_empleada = get_email_template_universal(
-            tipo_email=accion,
-            nombre=empleado.nombre if empleado else 'Colaborador/a',
-            serial=serial,
-            empresa=caso.empresa.nombre if caso.empresa else 'N/A',
-            tipo_incapacidad=caso.tipo.value if caso.tipo else 'General',
-            telefono=caso.telefono_form,
-            email=caso.email_form,
-            link_drive=caso.drive_link,
-            checks_seleccionados=checks
-        )
-        
-        enviar_email_con_adjuntos(
-            caso.email_form,
-            f"{'✅ Validada' if accion == 'completa' else '⚠️ Acción requerida'} - {serial}",
-            email_empleada,
-            adjuntos_paths
-        )
-    
-    # Email a TTHH (si corresponde)
-    if accion == 'tthh':
-        email_tthh_destinatario = obtener_email_tthh(caso.empresa.nombre if caso.empresa else 'Default')
-        
-        email_tthh = get_email_template_universal(
-            tipo_email='tthh',
-            nombre=empleado.nombre if empleado else 'Colaborador/a',
-            serial=serial,
-            empresa=caso.empresa.nombre if caso.empresa else 'N/A',
-            tipo_incapacidad=caso.tipo.value if caso.tipo else 'General',
-            telefono=caso.telefono_form,
-            email=caso.email_form,
-            link_drive=caso.drive_link,
-            checks_seleccionados=checks
-        )
-        
-        enviar_email_con_adjuntos(
-            email_tthh_destinatario,
-            f"🚨 ALERTA - Presunto Fraude - {serial}",
-            email_tthh,
-            adjuntos_paths
-        )
-        
-        # Email confirmación a la empleada
-        email_empleada_falsa = get_email_template_universal(
-            tipo_email='falsa',
-            nombre=empleado.nombre if empleado else 'Colaborador/a',
-            serial=serial,
-            empresa=caso.empresa.nombre if caso.empresa else 'N/A',
-            tipo_incapacidad=caso.tipo.value if caso.tipo else 'General',
-            telefono=caso.telefono_form,
-            email=caso.email_form,
-            link_drive=caso.drive_link
-        )
-        
-        send_html_email(
-            caso.email_form,
-            f"✅ Confirmación de recepción - {serial}",
-            email_empleada_falsa
-        )
-    
-    # Limpiar adjuntos temporales
-    for temp_file in adjuntos_paths:
-        try:
-            os.remove(temp_file)
-        except:
-            pass
-    
-    return {
-        "status": "ok",
-        "serial": serial,
-        "accion": accion,
-        "checks": checks,
-        "nuevo_link": caso.drive_link,
-        "mensaje": f"Caso {accion} correctamente"
-    }
-
-@router.get("/checks-disponibles/{tipo_incapacidad}")
-async def obtener_checks_disponibles_endpoint(
-    tipo_incapacidad: str,
-    db: Session = Depends(get_db),
-    _: bool = Depends(verificar_token_admin)
-):
-    """Endpoint para obtener los checks disponibles según tipo de incapacidad"""
-    checks = obtener_checks_por_tipo(tipo_incapacidad)
-    
-    return {
-        "tipo_incapacidad": tipo_incapacidad,
-        "checks": checks
-    }
-
-@router.post("/casos/{serial}/editar-pdf")
-async def editar_pdf_caso(
-    serial: str,
-    operaciones: dict,
-    db: Session = Depends(get_db),
-    _: bool = Depends(verificar_token_admin)
-):
-    """
-    Edita el PDF de un caso con múltiples operaciones
-    
-    Operaciones soportadas:
-    - enhance_quality: {page_num: int}
-    - rotate: {page_num: int, angle: int}
-    - crop_auto: {page_num: int, margin: int}
-    - crop_custom: {page_num: int, x: int, y: int, width: int, height: int}
-    - reorder: {new_order: [1, 0, 2, ...]}
-    - annotate: {page_num: int, type: str, coords: [x1,y1,x2,y2], text: str, color: [r,g,b]}
-    - delete_page: {pages: [0, 2, 5]}
-    """
-    from app.pdf_editor import PDFEditor
-    
-    caso = db.query(Case).filter(Case.serial == serial).first()
-    if not caso or not caso.drive_link:
-        raise HTTPException(status_code=404, detail="Caso o PDF no encontrado")
-    
-    # Extraer file_id y descargar PDF
-    if '/file/d/' in caso.drive_link:
-        file_id = caso.drive_link.split('/file/d/')[1].split('/')[0]
-    elif 'id=' in caso.drive_link:
-        file_id = caso.drive_link.split('id=')[1].split('&')[0]
-    else:
-        raise HTTPException(status_code=400, detail="Link de Drive inválido")
-    
-    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
-    response = requests.get(download_url)
-    
-    if response.status_code != 200:
-        raise HTTPException(status_code=500, detail="Error descargando PDF")
-    
-    temp_input = os.path.join(tempfile.gettempdir(), f"{serial}_original.pdf")
-    temp_output = os.path.join(tempfile.gettempdir(), f"{serial}_edited.pdf")
-    
-    with open(temp_input, 'wb') as f:
-        f.write(response.content)
-    
-    try:
-        editor = PDFEditor(temp_input)
-        
-        for op_type, op_data in operaciones.items():
-            if op_type == 'enhance_quality':
-                for page_num in op_data.get('pages', []):
-                    editor.enhance_page_quality(page_num)
-            
-            elif op_type == 'rotate':
-                for item in op_data:
-                    editor.rotate_page(item['page_num'], item['angle'])
-            
-            elif op_type == 'crop_auto':
-                for item in op_data:
-                    editor.auto_crop_page(item['page_num'], item.get('margin', 10))
-            
-            elif op_type == 'crop_custom':
-                for item in op_data:
-                    editor.crop_page_custom(
-                        item['page_num'],
-                        item['x'], item['y'],
-                        item['width'], item['height']
-                    )
-            
-            elif op_type == 'reorder':
-                editor.reorder_pages(op_data['new_order'])
-            
-            elif op_type == 'annotate':
-                for item in op_data:
-                    color_tuple = tuple(item.get('color', [1, 0, 0]))
-                    editor.add_annotation(
-                        item['page_num'],
-                        item['type'],
-                        tuple(item['coords']),
-                        item.get('text', ''),
-                        color_tuple
-                    )
-            
-            elif op_type == 'delete_page':
-                for page_num in sorted(op_data['pages'], reverse=True):
-                    editor.delete_page(page_num)
-        
-        editor.save_changes(temp_output)
-        
-        # Subir a Drive
-        organizer = CaseFileOrganizer()
-        nuevo_link = organizer.actualizar_pdf_editado(caso, temp_output)
-        
-        if nuevo_link:
-            caso.drive_link = nuevo_link
-            db.commit()
-        
-        os.remove(temp_input)
-        os.remove(temp_output)
-        
-        return {
-            "status": "ok",
-            "serial": serial,
-            "nuevo_link": nuevo_link,
-            "modificaciones": editor.get_modifications_log(),
-            "mensaje": "PDF editado y actualizado en Drive"
-        }
-    
-    except Exception as e:
-        if os.path.exists(temp_input):
-            os.remove(temp_input)
-        if os.path.exists(temp_output):
-            os.remove(temp_output)
-        raise HTTPException(status_code=500, detail=f"Error editando PDF: {str(e)}")
-
-@router.post("/casos/{serial}/crear-adjunto")
-async def crear_adjunto_desde_pdf(
-    serial: str,
-    page_num: int,
-    coords: List[int],
-    tipo: str = "highlight",
-    db: Session = Depends(get_db),
-    _: bool = Depends(verificar_token_admin)
-):
-    """
-    Crea una imagen recortada del PDF para adjuntar al email
-    Tipos: "highlight" o "preview"
-    """
-    from app.pdf_editor import PDFAttachmentManager
-    
-    caso = db.query(Case).filter(Case.serial == serial).first()
-    if not caso or not caso.drive_link:
-        raise HTTPException(status_code=404, detail="Caso no encontrado")
-    
-    if '/file/d/' in caso.drive_link:
-        file_id = caso.drive_link.split('/file/d/')[1].split('/')[0]
-    else:
-        raise HTTPException(status_code=400, detail="Link inválido")
-    
-    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
-    response = requests.get(download_url)
-    
-    temp_pdf = os.path.join(tempfile.gettempdir(), f"{serial}_temp.pdf")
-    temp_img = os.path.join(tempfile.gettempdir(), f"{serial}_adjunto_{page_num}.png")
-    
-    with open(temp_pdf, 'wb') as f:
-        f.write(response.content)
-    
-    try:
-        manager = PDFAttachmentManager()
-        
-        if tipo == "highlight":
-            manager.create_highlight_image(temp_pdf, page_num, coords, temp_img)
-        else:
-            manager.create_page_preview(temp_pdf, page_num, temp_img, [coords])
-        
-        with open(temp_img, 'rb') as f:
-            img_data = f.read()
-        
-        os.remove(temp_pdf)
-        os.remove(temp_img)
-        
-        return StreamingResponse(
-            io.BytesIO(img_data),
-            media_type="image/png",
-            headers={"Content-Disposition": f"attachment; filename={serial}_adjunto.png"}
-        )
-    
-    except Exception as e:
-        if os.path.exists(temp_pdf):
-            os.remove(temp_pdf)
-        if os.path.exists(temp_img):
-            os.remove(temp_img)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/casos/{serial}/autorizar-nueva")
-async def autorizar_nueva_incapacidad(
-    serial: str,
-    db: Session = Depends(get_db),
-    _: bool = Depends(verificar_token_admin)
-):
-    """Autoriza que el trabajador pueda subir una nueva incapacidad"""
-    
-    caso = db.query(Case).filter(Case.serial == serial).first()
-    if not caso:
-        raise HTTPException(status_code=404, detail="Caso no encontrado")
-    
-    caso.bloquea_nueva = False
-    
-    registrar_evento(
-        db, caso.id, "autorizacion_nueva",
-        actor="Validador",
-        motivo="Se autorizó al trabajador para subir una nueva incapacidad distinta"
-    )
     
     db.commit()
     
@@ -1174,3 +824,402 @@ async def obtener_pdf_caso(
     except Exception as e:
         print(f"❌ Error obteniendo PDF para {serial}: {e}")
         raise HTTPException(status_code=500, detail=f"Error procesando PDF: {str(e)}")
+        "serial": serial,
+        "estado_anterior": estado_anterior,
+        "estado_nuevo": nuevo_estado,
+        "mensaje": f"Estado actualizado a {nuevo_estado}"
+    }
+
+@router.post("/casos/{serial}/validar")
+async def validar_caso_con_checks(
+    serial: str,
+    accion: str,
+    checks: List[str] = [],
+    observaciones: str = "",
+    adjuntos: List[UploadFile] = File(default=[]),
+    db: Session = Depends(get_db),
+    _: bool = Depends(verificar_token_admin)
+):
+    """
+    Endpoint unificado para validaciones con checks y adjuntos en emails
+    Acciones: 'completa', 'incompleta', 'ilegible', 'eps', 'tthh', 'falsa'
+    """
+    caso = db.query(Case).filter(Case.serial == serial).first()
+    if not caso:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    
+    empleado = caso.empleado
+    
+    # ✅ Cambiar estado en BD
+    estado_map = {
+        'completa': EstadoCaso.COMPLETA,
+        'incompleta': EstadoCaso.INCOMPLETA,
+        'ilegible': EstadoCaso.ILEGIBLE,
+        'eps': EstadoCaso.EPS_TRANSCRIPCION,
+        'tthh': EstadoCaso.DERIVADO_TTHH,
+        'falsa': EstadoCaso.DERIVADO_TTHH
+    }
+    nuevo_estado = estado_map[accion]
+    caso.estado = nuevo_estado
+    db.commit()
+    
+    # ✅ Mover archivo en Drive según el estado
+    organizer = CaseFileOrganizer()
+    nuevo_link = organizer.mover_caso_segun_estado(caso, nuevo_estado.value, observaciones)
+    if nuevo_link:
+        caso.drive_link = nuevo_link
+        db.commit()
+        print(f"✅ Archivo movido en Drive: {nuevo_link}")
+    
+    # Procesar adjuntos si los hay
+    adjuntos_paths = []
+    if adjuntos:
+        from app.pdf_editor import PDFAttachmentManager
+        attachment_manager = PDFAttachmentManager()
+        
+        for i, adjunto in enumerate(adjuntos):
+            temp_path = os.path.join(tempfile.gettempdir(), f"{serial}_adjunto_{i}_{adjunto.filename}")
+            with open(temp_path, "wb") as f:
+                f.write(await adjunto.read())
+            adjuntos_paths.append(temp_path)
+    
+    # ✅ Enviar emails según acción
+    if accion != 'tthh' and accion != 'falsa':
+        # Email a la empleada
+        email_empleada = get_email_template_universal(
+            tipo_email=accion,
+            nombre=empleado.nombre if empleado else 'Colaborador/a',
+            serial=serial,
+            empresa=caso.empresa.nombre if caso.empresa else 'N/A',
+            tipo_incapacidad=caso.tipo.value if caso.tipo else 'General',
+            telefono=caso.telefono_form,
+            email=caso.email_form,
+            link_drive=caso.drive_link,
+            checks_seleccionados=checks
+        )
+        
+        enviar_email_con_adjuntos(
+            caso.email_form,
+            f"{'✅ Validada' if accion == 'completa' else '⚠️ Acción requerida'} - {serial}",
+            email_empleada,
+            adjuntos_paths
+        )
+    
+    # ✅ Si es TTHH, enviar alerta a email según empresa
+    if accion == 'tthh':
+        email_tthh_destinatario = obtener_email_tthh(caso.empresa.nombre if caso.empresa else 'Default')
+        
+        email_tthh = get_email_template_universal(
+            tipo_email='tthh',
+            nombre=empleado.nombre if empleado else 'Colaborador/a',
+            serial=serial,
+            empresa=caso.empresa.nombre if caso.empresa else 'N/A',
+            tipo_incapacidad=caso.tipo.value if caso.tipo else 'General',
+            telefono=caso.telefono_form,
+            email=caso.email_form,
+            link_drive=caso.drive_link,
+            checks_seleccionados=checks
+        )
+        
+        enviar_email_con_adjuntos(
+            email_tthh_destinatario,
+            f"🚨 ALERTA - Presunto Fraude - {serial}",
+            email_tthh,
+            adjuntos_paths
+        )
+        
+        # Email confirmación a la empleada
+        email_empleada_falsa = get_email_template_universal(
+            tipo_email='falsa',
+            nombre=empleado.nombre if empleado else 'Colaborador/a',
+            serial=serial,
+            empresa=caso.empresa.nombre if caso.empresa else 'N/A',
+            tipo_incapacidad=caso.tipo.value if caso.tipo else 'General',
+            telefono=caso.telefono_form,
+            email=caso.email_form,
+            link_drive=caso.drive_link
+        )
+        
+        send_html_email(
+            caso.email_form,
+            f"✅ Confirmación de recepción - {serial}",
+            email_empleada_falsa
+        )
+    
+    # ✅ Si es "falsa", solo email confirmación (sin alertar a TTHH)
+    if accion == 'falsa':
+        email_confirmacion = get_email_template_universal(
+            tipo_email='falsa',
+            nombre=empleado.nombre if empleado else 'Colaborador/a',
+            serial=serial,
+            empresa=caso.empresa.nombre if caso.empresa else 'N/A',
+            tipo_incapacidad=caso.tipo.value if caso.tipo else 'General',
+            telefono=caso.telefono_form,
+            email=caso.email_form,
+            link_drive=caso.drive_link
+        )
+        
+        send_html_email(
+            caso.email_form,
+            f"✅ Confirmación de recepción - {serial}",
+            email_confirmacion
+        )
+    
+    # Limpiar adjuntos temporales
+    for temp_file in adjuntos_paths:
+        try:
+            os.remove(temp_file)
+        except:
+            pass
+    
+    return {
+        "status": "ok",
+        "serial": serial,
+        "accion": accion,
+        "checks": checks,
+        "nuevo_link": caso.drive_link,
+        "mensaje": f"Caso {accion} correctamente"
+    }
+
+@router.get("/checks-disponibles/{tipo_incapacidad}")
+async def obtener_checks_disponibles_endpoint(
+    tipo_incapacidad: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(verificar_token_admin)
+):
+    """Endpoint para obtener los checks disponibles según tipo de incapacidad"""
+    checks = obtener_checks_por_tipo(tipo_incapacidad)
+    
+    return {
+        "tipo_incapacidad": tipo_incapacidad,
+        "checks": checks
+    }
+
+@router.post("/casos/{serial}/editar-pdf")
+async def editar_pdf_caso(
+    serial: str,
+    operaciones: dict,
+    db: Session = Depends(get_db),
+    _: bool = Depends(verificar_token_admin)
+):
+    """
+    Edita el PDF de un caso con múltiples operaciones
+    
+    Operaciones soportadas:
+    - enhance_quality: {page_num: int}
+    - rotate: {page_num: int, angle: int}
+    - crop_auto: {page_num: int, margin: int}
+    - crop_custom: {page_num: int, x: int, y: int, width: int, height: int}
+    - reorder: {new_order: [1, 0, 2, ...]}
+    - annotate: {page_num: int, type: str, coords: [x1,y1,x2,y2], text: str, color: [r,g,b]}
+    - delete_page: {pages: [0, 2, 5]}
+    """
+    from app.pdf_editor import PDFEditor
+    
+    caso = db.query(Case).filter(Case.serial == serial).first()
+    if not caso or not caso.drive_link:
+        raise HTTPException(status_code=404, detail="Caso o PDF no encontrado")
+    
+    # Extraer file_id y descargar PDF
+    if '/file/d/' in caso.drive_link:
+        file_id = caso.drive_link.split('/file/d/')[1].split('/')[0]
+    elif 'id=' in caso.drive_link:
+        file_id = caso.drive_link.split('id=')[1].split('&')[0]
+    else:
+        raise HTTPException(status_code=400, detail="Link de Drive inválido")
+    
+    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    response = requests.get(download_url)
+    
+    if response.status_code != 200:
+        raise HTTPException(status_code=500, detail="Error descargando PDF")
+    
+    temp_input = os.path.join(tempfile.gettempdir(), f"{serial}_original.pdf")
+    temp_output = os.path.join(tempfile.gettempdir(), f"{serial}_edited.pdf")
+    
+    with open(temp_input, 'wb') as f:
+        f.write(response.content)
+    
+    try:
+        editor = PDFEditor(temp_input)
+        
+        for op_type, op_data in operaciones.items():
+            if op_type == 'enhance_quality':
+                for page_num in op_data.get('pages', []):
+                    editor.enhance_page_quality(page_num)
+            
+            elif op_type == 'rotate':
+                for item in op_data:
+                    editor.rotate_page(item['page_num'], item['angle'])
+            
+            elif op_type == 'crop_auto':
+                for item in op_data:
+                    editor.auto_crop_page(item['page_num'], item.get('margin', 10))
+            
+            elif op_type == 'crop_custom':
+                for item in op_data:
+                    editor.crop_page_custom(
+                        item['page_num'],
+                        item['x'], item['y'],
+                        item['width'], item['height']
+                    )
+            
+            elif op_type == 'reorder':
+                editor.reorder_pages(op_data['new_order'])
+            
+            elif op_type == 'annotate':
+                for item in op_data:
+                    color_tuple = tuple(item.get('color', [1, 0, 0]))
+                    editor.add_annotation(
+                        item['page_num'],
+                        item['type'],
+                        tuple(item['coords']),
+                        item.get('text', ''),
+                        color_tuple
+                    )
+            
+            elif op_type == 'delete_page':
+                for page_num in sorted(op_data['pages'], reverse=True):
+                    editor.delete_page(page_num)
+        
+        editor.save_changes(temp_output)
+        
+        # Subir a Drive
+        organizer = CaseFileOrganizer()
+        nuevo_link = organizer.actualizar_pdf_editado(caso, temp_output)
+        
+        if nuevo_link:
+            caso.drive_link = nuevo_link
+            db.commit()
+        
+        os.remove(temp_input)
+        os.remove(temp_output)
+        
+        return {
+            "status": "ok",
+            "serial": serial,
+            "nuevo_link": nuevo_link,
+            "modificaciones": editor.get_modifications_log(),
+            "mensaje": "PDF editado y actualizado en Drive"
+        }
+    
+    except Exception as e:
+        if os.path.exists(temp_input):
+            os.remove(temp_input)
+        if os.path.exists(temp_output):
+            os.remove(temp_output)
+        raise HTTPException(status_code=500, detail=f"Error editando PDF: {str(e)}")
+
+@router.post("/casos/{serial}/crear-adjunto")
+async def crear_adjunto_desde_pdf(
+    serial: str,
+    page_num: int,
+    coords: List[int],
+    tipo: str = "highlight",
+    db: Session = Depends(get_db),
+    _: bool = Depends(verificar_token_admin)
+):
+    """
+    Crea una imagen recortada del PDF para adjuntar al email
+    Tipos: "highlight" o "preview"
+    """
+    from app.pdf_editor import PDFAttachmentManager
+    
+    caso = db.query(Case).filter(Case.serial == serial).first()
+    if not caso or not caso.drive_link:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    
+    if '/file/d/' in caso.drive_link:
+        file_id = caso.drive_link.split('/file/d/')[1].split('/')[0]
+    else:
+        raise HTTPException(status_code=400, detail="Link inválido")
+    
+    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    response = requests.get(download_url)
+    
+    temp_pdf = os.path.join(tempfile.gettempdir(), f"{serial}_temp.pdf")
+    temp_img = os.path.join(tempfile.gettempdir(), f"{serial}_adjunto_{page_num}.png")
+    
+    with open(temp_pdf, 'wb') as f:
+        f.write(response.content)
+    
+    try:
+        manager = PDFAttachmentManager()
+        
+        if tipo == "highlight":
+            manager.create_highlight_image(temp_pdf, page_num, coords, temp_img)
+        else:
+            manager.create_page_preview(temp_pdf, page_num, temp_img, [coords])
+        
+        with open(temp_img, 'rb') as f:
+            img_data = f.read()
+        
+        os.remove(temp_pdf)
+        os.remove(temp_img)
+        
+        return StreamingResponse(
+            io.BytesIO(img_data),
+            media_type="image/png",
+            headers={"Content-Disposition": f"attachment; filename={serial}_adjunto.png"}
+        )
+    
+    except Exception as e:
+        if os.path.exists(temp_pdf):
+            os.remove(temp_pdf)
+        if os.path.exists(temp_img):
+            os.remove(temp_img)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/casos/{serial}/autorizar-nueva")
+async def autorizar_nueva_incapacidad(
+    serial: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(verificar_token_admin)
+):
+    """Autoriza que el trabajador pueda subir una nueva incapacidad"""
+    
+    caso = db.query(Case).filter(Case.serial == serial).first()
+    if not caso:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    
+    caso.bloquea_nueva = False
+    
+    registrar_evento(
+        db, caso.id, "autorizacion_nueva",
+        actor="Validador",
+        motivo="Se autorizó al trabajador para subir una nueva incapacidad distinta"
+    )
+    
+    db.commit()
+    
+    return {
+        "status": "ok",
+# En app/validador.py
+
+@router.get("/checks-disponibles/{tipo_incapacidad}")
+async def obtener_checks_disponibles_endpoint(
+    tipo_incapacidad: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(verificar_token_admin)
+):
+    """
+    Retorna los checks disponibles según el tipo de incapacidad.
+    El frontend puede usar esto para mostrar solo los checks relevantes.
+    """
+    from app.checks_disponibles import obtener_checks_por_tipo
+    
+    checks = obtener_checks_por_tipo(tipo_incapacidad)
+    
+    # Convertir a formato amigable para el frontend
+    checks_formateados = []
+    for key, value in checks.items():
+        checks_formateados.append({
+            "id": key,
+            "label": value['label'],
+            "descripcion": value['descripcion']
+        })
+    
+    return {
+        "tipo_incapacidad": tipo_incapacidad,
+        "checks": checks_formateados
+    }

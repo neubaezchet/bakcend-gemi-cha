@@ -234,6 +234,12 @@ def generar_mensaje_segun_tipo(tipo_email, checks, tipo_incapacidad, serial, qui
                 {explicacion}
             </p>
         </div>
+        
+        <div style="background: #fff3cd; border: 2px solid #ffc107; padding: 20px; border-radius: 8px; margin: 25px 0;">
+            <p style="margin: 0; color: #856404; font-weight: bold; text-align: center;">
+                Te recordamos revisar cuidadosamente que todos los documentos estén claros, completos y sin recortes antes de reenviarlos.
+            </p>
+        </div>
         '''
     
     elif tipo_email == 'ilegible':
@@ -246,6 +252,20 @@ def generar_mensaje_segun_tipo(tipo_email, checks, tipo_incapacidad, serial, qui
             <p style="margin: 10px 0 0 0; color: #78350f; line-height: 1.6;">
                 {explicacion}
             </p>
+        </div>
+        
+        <div style="background: #fef3c7; border: 2px solid #f59e0b; padding: 20px; border-radius: 8px; margin: 25px 0;">
+            <h4 style="margin-top: 0; color: #92400e;">
+                📸 Recomendaciones para tomar fotos claras:
+            </h4>
+            <ul style="color: #78350f; line-height: 1.8; margin: 10px 0;">
+                <li>Usar buena iluminación (preferiblemente luz natural)</li>
+                <li>Colocar el documento sobre una superficie plana</li>
+                <li>Asegurarse de que <strong>todos los bordes</strong> sean visibles</li>
+                <li>Evitar sombras, reflejos o dedos en la imagen</li>
+                <li>Tomar la foto desde arriba, perpendicular al documento</li>
+                <li>Verificar que el texto sea legible antes de enviar</li>
+            </ul>
         </div>
         '''
     
@@ -311,33 +331,21 @@ def generar_mensaje_segun_tipo(tipo_email, checks, tipo_incapacidad, serial, qui
     return ""
 
 def generar_explicacion_checks(checks):
-    """Convierte los checks en explicación en lenguaje natural"""
-    explicaciones = {
-        'epicrisis_incompleta': 'la epicrisis o resumen de atención está incompleta (faltan páginas)',
-        'epicrisis_faltante': 'falta la epicrisis o resumen de atención completo',
-        'incapacidad_faltante': 'falta el soporte original de incapacidad (el documento adjunto no es válido como soporte oficial)',
-        'soat_faltante': 'falta el SOAT del vehículo',
-        'furips_faltante': 'falta el FURIPS (Formato Único de Reporte de Accidente)',
-        'licencia_maternidad_faltante': 'falta la licencia de maternidad de la madre',
-        'registro_civil_faltante': 'falta el registro civil del bebé',
-        'nacido_vivo_faltante': 'falta el certificado de nacido vivo',
-        'cedula_padre_faltante': 'falta la cédula del padre (ambas caras)',
-        'ilegible_recortada': 'el documento está recortado (no se ven todos los bordes)',
-        'ilegible_borrosa': 'el documento está borroso o con poca calidad de imagen',
-        'ilegible_manchada': 'el documento tiene manchas, está dañado o no es legible',
-    }
+    """Convierte los checks en explicación en lenguaje natural usando las descripciones actualizadas"""
+    from app.checks_disponibles import CHECKS_DISPONIBLES
     
-    mensajes = [explicaciones.get(c, c) for c in checks if c in explicaciones]
+    mensajes = []
+    for check_key in checks:
+        if check_key in CHECKS_DISPONIBLES:
+            mensajes.append(CHECKS_DISPONIBLES[check_key]['descripcion'])
     
     if not mensajes:
         return "Se encontró incompleta y requiere corrección."
     elif len(mensajes) == 1:
-        return f"Se encontró incompleta porque {mensajes[0]}."
-    elif len(mensajes) == 2:
-        return f"Se encontró incompleta porque {mensajes[0]} y {mensajes[1]}."
+        return mensajes[0]
     else:
-        ultima = mensajes.pop()
-        return f"Se encontró incompleta porque {', '.join(mensajes)} y {ultima}."
+        # Unir con saltos de línea para mejor legibilidad
+        return "<br><br>".join([f"• {msg}" for msg in mensajes])
 
 def generar_checklist_requisitos(tipo_incapacidad, checks_faltantes, tipo_email):
     """Genera la checklist visual de requisitos"""
@@ -488,167 +496,4 @@ def generar_detalles_caso(serial, nombre, empresa, tipo_incapacidad, telefono, e
                 <td style="padding: 8px 0; color: #333;">{nombre}</td>
             </tr>
             <tr>
-                <td style="padding: 8px 0; color: #666; font-weight: bold;">Empresa:</td>
-                <td style="padding: 8px 0; color: #333;">{empresa}</td>
-            </tr>
-            <tr>
-                <td style="padding: 8px 0; color: #666; font-weight: bold;">Tipo:</td>
-                <td style="padding: 8px 0; color: #333;">{tipo_incapacidad}</td>
-            </tr>
-            <tr>
-                <td style="padding: 8px 0; color: #666; font-weight: bold;">Teléfono:</td>
-                <td style="padding: 8px 0; color: #333;">{telefono}</td>
-            </tr>
-            <tr>
-                <td style="padding: 8px 0; color: #666; font-weight: bold;">Email:</td>
-                <td style="padding: 8px 0; color: #333;">{email}</td>
-            </tr>
-        </table>
-    </div>
-    '''
-
-
-# ==================== COMPATIBILIDAD CON CÓDIGO EXISTENTE ====================
-# Mantener las funciones antiguas para no romper nada
-
-def get_confirmation_template(nombre, consecutivo, empresa, quinzena, link_pdf, archivos_nombres, email_contacto, telefono):
-    """Template de confirmación (wrapper para compatibilidad)"""
-    return get_email_template_universal(
-        tipo_email='confirmacion',
-        nombre=nombre,
-        serial=consecutivo,
-        empresa=empresa,
-        tipo_incapacidad='General',  # No se especifica en la firma original
-        telefono=telefono,
-        email=email_contacto,
-        link_drive=link_pdf,
-        archivos_nombres=archivos_nombres,
-        quinzena=quinzena
-    )
-
-def get_alert_template(tipo, cedula, consecutivo, email_contacto, telefono, nombre=None, empresa=None, link_pdf=None, archivos_nombres=None, quinzena=None):
-    """Template de alerta (mantener igual que antes)"""
-    if tipo == "copia":
-        titulo = "Copia Registro de Incapacidad"
-        contenido_principal = f"""
-        <div style="background: #d4edda; border: 1px solid #c3e6cb; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="color: #155724; margin-top: 0;">✅ Empleado Registrado - {empresa}</h3>
-            <p style="margin: 0; color: #155724;">Se ha procesado exitosamente la incapacidad del empleado <strong>{nombre}</strong>.</p>
-        </div>
-        
-        <div style="background: white; border: 1px solid #e9ecef; padding: 20px; border-radius: 8px; margin: 25px 0;">
-            <h4 style="margin-top: 0; color: #667eea;">Información del Empleado</h4>
-            <table style="width: 100%; font-size: 14px;">
-                <tr>
-                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Nombre:</td>
-                    <td style="padding: 8px 0; color: #333;">{nombre}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Cédula:</td>
-                    <td style="padding: 8px 0; color: #333;">{cedula}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Empresa:</td>
-                    <td style="padding: 8px 0; color: #333;">{empresa}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Email contacto:</td>
-                    <td style="padding: 8px 0; color: #333;">{email_contacto}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Teléfono:</td>
-                    <td style="padding: 8px 0; color: #333;">{telefono}</td>
-                </tr>
-            </table>
-        </div>
-        
-        <div style="margin: 25px 0;">
-            <h4 style="color: #333; margin-bottom: 15px;">📋 Documentos procesados:</h4>
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; font-size: 14px; line-height: 1.5;">
-                {'<br>'.join([f"• {archivo}" for archivo in archivos_nombres]) if archivos_nombres else 'No especificado'}
-            </div>
-        </div>
-        
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="{link_pdf}" style="display: inline-block; background: #28a745; color: white; padding: 12px 30px; text-decoration: none; border-radius: 25px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                📄 Ver Documentos en Drive
-            </a>
-        </div>
-        """
-    
-    else:  # alerta
-        titulo = "⚠️ ALERTA: Cédula No Encontrada"
-        contenido_principal = f"""
-        <div style="background: #f8d7da; border: 1px solid #f5c6cb; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="color: #721c24; margin-top: 0;">⚠️ Cédula No Registrada</h3>
-            <p style="margin: 0; color: #721c24;">Se ha recibido documentación de una cédula no encontrada en la base de datos.</p>
-        </div>
-        
-        <div style="background: white; border: 1px solid #e9ecef; padding: 20px; border-radius: 8px; margin: 25px 0;">
-            <h4 style="margin-top: 0; color: #dc3545;">Datos de la Solicitud</h4>
-            <table style="width: 100%; font-size: 14px;">
-                <tr>
-                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Cédula:</td>
-                    <td style="padding: 8px 0; color: #333; font-weight: bold;">{cedula}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Email contacto:</td>
-                    <td style="padding: 8px 0; color: #333;">{email_contacto}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Teléfono:</td>
-                    <td style="padding: 8px 0; color: #333;">{telefono}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Fecha recepción:</td>
-                    <td style="padding: 8px 0; color: #333;">{quinzena}</td>
-                </tr>
-            </table>
-        </div>
-        
-        <div style="background: #fff3cd; border: 1px solid #ffeeba; padding: 20px; border-radius: 8px; margin: 25px 0;">
-            <p style="margin: 0; color: #856404; text-align: center; font-weight: bold;">
-                🔍 ACCIÓN REQUERIDA: Validar información y contactar al solicitante
-            </p>
-        </div>
-        """
-    
-    return f"""
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>{titulo}</title>
-    </head>
-    <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-            
-            <!-- Header -->
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px 20px; text-align: center;">
-                <h1 style="margin: 0; font-size: 24px; font-weight: bold;">IncaNeurobaeza - Supervisión</h1>
-                <p style="margin: 5px 0 0 0; font-style: italic; opacity: 0.9;">Sistema de Gestión</p>
-            </div>
-            
-            <!-- Content -->
-            <div style="padding: 30px;">
-                <h2 style="color: #333; margin-bottom: 20px;">{titulo}</h2>
-                
-                <div style="background: #f8f9fa; padding: 15px; border-left: 4px solid #667eea; margin: 20px 0;">
-                    <strong>Consecutivo:</strong> {consecutivo}
-                </div>
-                
-                {contenido_principal}
-            </div>
-            
-            <!-- Footer -->
-            <div style="background: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e9ecef;">
-                <div style="font-size: 12px; color: #6c757d;">
-                    Sistema Automático IncaNeurobaeza<br>
-                    Notificación de supervisión
-                </div>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
+                <td style="padding: 8px 0; color: #666; font-weight: bold;">Empresa:</t
