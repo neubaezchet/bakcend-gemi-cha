@@ -110,7 +110,7 @@ def get_email_template_universal(
                style="display: inline-block; background: linear-gradient(135deg, {config['color_principal']} 0%, {config['color_secundario']} 100%); 
                       color: white; padding: 16px 40px; text-decoration: none; border-radius: 25px; 
                       font-weight: bold; font-size: 16px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
-                🔄 Subir Documentos Corregidos
+                📄 Subir Documentos Corregidos
             </a>
         </div>
     ''' if config['mostrar_boton_reenvio'] else ''
@@ -216,7 +216,7 @@ def generar_mensaje_segun_tipo(tipo_email, checks, tipo_incapacidad, serial, qui
         </div>
         
         <div style="margin: 20px 0;">
-            <h4 style="color: #333; margin-bottom: 10px;">📎 Documentos recibidos:</h4>
+            <h4 style="color: #333; margin-bottom: 10px;">🔎 Documentos recibidos:</h4>
             <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; font-size: 14px;">
                 {archivos_list if archivos_list else '<em>No especificado</em>'}
             </div>
@@ -496,4 +496,119 @@ def generar_detalles_caso(serial, nombre, empresa, tipo_incapacidad, telefono, e
                 <td style="padding: 8px 0; color: #333;">{nombre}</td>
             </tr>
             <tr>
-                <td style="padding: 8px 0; color: #666; font-weight: bold;">Empresa:</t
+                <td style="padding: 8px 0; color: #666; font-weight: bold;">Empresa:</td>
+                <td style="padding: 8px 0; color: #333;">{empresa}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0; color: #666; font-weight: bold;">Tipo:</td>
+                <td style="padding: 8px 0; color: #333;">{tipo_incapacidad}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0; color: #666; font-weight: bold;">Teléfono:</td>
+                <td style="padding: 8px 0; color: #333;">{telefono}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0; color: #666; font-weight: bold;">Email:</td>
+                <td style="padding: 8px 0; color: #333;">{email}</td>
+            </tr>
+        </table>
+    </div>
+    '''
+
+
+# ==================== FUNCIONES DE COMPATIBILIDAD (LEGACY) ====================
+
+def get_confirmation_template(nombre, serial, empresa, tipo_incapacidad, telefono, email, link_drive, archivos_nombres=None):
+    """Wrapper para mantener compatibilidad con código existente"""
+    return get_email_template_universal(
+        tipo_email='confirmacion',
+        nombre=nombre,
+        serial=serial,
+        empresa=empresa,
+        tipo_incapacidad=tipo_incapacidad,
+        telefono=telefono,
+        email=email,
+        link_drive=link_drive,
+        archivos_nombres=archivos_nombres
+    )
+
+def get_alert_template(nombre, serial, empresa, tipo_incapacidad, telefono, email, link_drive, checks_seleccionados=None):
+    """Wrapper para emails de alerta (incompleta/ilegible)"""
+    return get_email_template_universal(
+        tipo_email='incompleta',
+        nombre=nombre,
+        serial=serial,
+        empresa=empresa,
+        tipo_incapacidad=tipo_incapacidad,
+        telefono=telefono,
+        email=email,
+        link_drive=link_drive,
+        checks_seleccionados=checks_seleccionados or []
+    )
+
+def get_ilegible_template(nombre, serial, empresa, tipo_incapacidad, telefono, email, link_drive, checks_seleccionados=None):
+    """Template para documentos ilegibles"""
+    return get_email_template_universal(
+        tipo_email='ilegible',
+        nombre=nombre,
+        serial=serial,
+        empresa=empresa,
+        tipo_incapacidad=tipo_incapacidad,
+        telefono=telefono,
+        email=email,
+        link_drive=link_drive,
+        checks_seleccionados=checks_seleccionados or []
+    )
+
+def get_eps_template(nombre, serial, empresa, tipo_incapacidad, telefono, email, link_drive):
+    """Template para casos que requieren transcripción en EPS"""
+    return get_email_template_universal(
+        tipo_email='eps',
+        nombre=nombre,
+        serial=serial,
+        empresa=empresa,
+        tipo_incapacidad=tipo_incapacidad,
+        telefono=telefono,
+        email=email,
+        link_drive=link_drive
+    )
+
+def get_completa_template(nombre, serial, empresa, tipo_incapacidad, telefono, email, link_drive):
+    """Template para casos validados completos"""
+    return get_email_template_universal(
+        tipo_email='completa',
+        nombre=nombre,
+        serial=serial,
+        empresa=empresa,
+        tipo_incapacidad=tipo_incapacidad,
+        telefono=telefono,
+        email=email,
+        link_drive=link_drive
+    )
+
+def get_tthh_template(nombre, serial, empresa, tipo_incapacidad, telefono, email, link_drive, checks_seleccionados=None):
+    """Template para alertas a Talento Humano"""
+    return get_email_template_universal(
+        tipo_email='tthh',
+        nombre=nombre,
+        serial=serial,
+        empresa=empresa,
+        tipo_incapacidad=tipo_incapacidad,
+        telefono=telefono,
+        email=email,
+        link_drive=link_drive,
+        checks_seleccionados=checks_seleccionados or []
+    )
+
+def get_falsa_template(nombre, serial, empresa, tipo_incapacidad, telefono, email, link_drive):
+    """Template para confirmación falsa (caso especial)"""
+    return get_email_template_universal(
+        tipo_email='falsa',
+        nombre=nombre,
+        serial=serial,
+        empresa=empresa,
+        tipo_incapacidad=tipo_incapacidad,
+        telefono=telefono,
+        email=email,
+        link_drive=link_drive
+    )
