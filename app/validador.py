@@ -363,7 +363,9 @@ async def cambiar_estado(
     return {
         "status": "ok",
         "serial": serial,
-        "mensaje": "Trabajador autorizado para subir nueva incapacidad"
+        "estado_anterior": estado_anterior,
+        "estado_nuevo": nuevo_estado,
+        "mensaje": f"Estado actualizado a {nuevo_estado}"
     }
 
 @router.post("/casos/{serial}/nota")
@@ -824,11 +826,6 @@ async def obtener_pdf_caso(
     except Exception as e:
         print(f"❌ Error obteniendo PDF para {serial}: {e}")
         raise HTTPException(status_code=500, detail=f"Error procesando PDF: {str(e)}")
-        "serial": serial,
-        "estado_anterior": estado_anterior,
-        "estado_nuevo": nuevo_estado,
-        "mensaje": f"Estado actualizado a {nuevo_estado}"
-    }
 
 @router.post("/casos/{serial}/validar")
 async def validar_caso_con_checks(
@@ -1169,57 +1166,3 @@ async def crear_adjunto_desde_pdf(
         if os.path.exists(temp_img):
             os.remove(temp_img)
         raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/casos/{serial}/autorizar-nueva")
-async def autorizar_nueva_incapacidad(
-    serial: str,
-    db: Session = Depends(get_db),
-    _: bool = Depends(verificar_token_admin)
-):
-    """Autoriza que el trabajador pueda subir una nueva incapacidad"""
-    
-    caso = db.query(Case).filter(Case.serial == serial).first()
-    if not caso:
-        raise HTTPException(status_code=404, detail="Caso no encontrado")
-    
-    caso.bloquea_nueva = False
-    
-    registrar_evento(
-        db, caso.id, "autorizacion_nueva",
-        actor="Validador",
-        motivo="Se autorizó al trabajador para subir una nueva incapacidad distinta"
-    )
-    
-    db.commit()
-    
-    return {
-        "status": "ok",
-# En app/validador.py
-
-@router.get("/checks-disponibles/{tipo_incapacidad}")
-async def obtener_checks_disponibles_endpoint(
-    tipo_incapacidad: str,
-    db: Session = Depends(get_db),
-    _: bool = Depends(verificar_token_admin)
-):
-    """
-    Retorna los checks disponibles según el tipo de incapacidad.
-    El frontend puede usar esto para mostrar solo los checks relevantes.
-    """
-    from app.checks_disponibles import obtener_checks_por_tipo
-    
-    checks = obtener_checks_por_tipo(tipo_incapacidad)
-    
-    # Convertir a formato amigable para el frontend
-    checks_formateados = []
-    for key, value in checks.items():
-        checks_formateados.append({
-            "id": key,
-            "label": value['label'],
-            "descripcion": value['descripcion']
-        })
-    
-    return {
-        "tipo_incapacidad": tipo_incapacidad,
-        "checks": checks_formateados
-    }
