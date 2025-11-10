@@ -1,7 +1,7 @@
 """
 Sistema de Base de Datos - IncaNeurobaeza
 Modelos SQLAlchemy para gestión de casos de incapacidades
-VERSIÓN CORREGIDA - 2024
+VERSIÓN 3.0 - Con soporte para jefes y recordatorios
 """
 
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum, JSON, text
@@ -72,6 +72,13 @@ class Employee(Base):
     company_id = Column(Integer, ForeignKey('companies.id', ondelete='CASCADE'), nullable=False)
     eps = Column(String(100))
     activo = Column(Boolean, default=True)
+    
+    # ✅ NUEVAS COLUMNAS - Información de jefes
+    jefe_nombre = Column(String(200))
+    jefe_email = Column(String(200))
+    jefe_cargo = Column(String(100))
+    area_trabajo = Column(String(100))
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -109,6 +116,10 @@ class Case(Base):
     drive_link = Column(String(500))
     email_form = Column(String(200))
     telefono_form = Column(String(50))
+    
+    # ✅ NUEVAS COLUMNAS - Sistema de recordatorios
+    recordatorio_enviado = Column(Boolean, default=False)
+    fecha_recordatorio = Column(DateTime, nullable=True)
     
     # Auditoría
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
@@ -165,7 +176,7 @@ class CaseEvent(Base):
     caso = relationship("Case", back_populates="eventos")
 
 class CaseNote(Base):
-    """Notas rápidas en casos (Mejora: Quick notes)"""
+    """Notas rápidas en casos"""
     __tablename__ = 'case_notes'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -181,7 +192,7 @@ class CaseNote(Base):
     caso = relationship("Case", back_populates="notas")
 
 class SearchHistory(Base):
-    """Historial de búsquedas relacionales (Auditoría)"""
+    """Historial de búsquedas relacionales"""
     __tablename__ = 'search_history'
     
     id = Column(Integer, primary_key=True, autoincrement=True)

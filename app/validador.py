@@ -3,7 +3,7 @@ Router del Portal de Validadores - IncaNeurobaeza
 Endpoints para gestión, validación y búsqueda de casos
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, FileResponse
 import requests
 import io
@@ -830,15 +830,15 @@ async def obtener_pdf_caso(
 @router.post("/casos/{serial}/validar")
 async def validar_caso_con_checks(
     serial: str,
-    accion: str,
-    checks: List[str] = [],
-    observaciones: str = "",
+    accion: str = Form(...),
+    checks: List[str] = Form(default=[]),
+    observaciones: str = Form(default=""),
     adjuntos: List[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
     _: bool = Depends(verificar_token_admin)
 ):
     """
-    Endpoint unificado para validaciones con checks y adjuntos en emails
+    Endpoint unificado para validaciones con SISTEMA HÍBRIDO IA/PLANTILLAS
     Acciones: 'completa', 'incompleta', 'ilegible', 'eps', 'tthh', 'falsa'
     """
     caso = db.query(Case).filter(Case.serial == serial).first()
@@ -871,18 +871,41 @@ async def validar_caso_con_checks(
     # Procesar adjuntos si los hay
     adjuntos_paths = []
     if adjuntos:
-        from app.pdf_editor import PDFAttachmentManager
-        attachment_manager = PDFAttachmentManager()
-        
         for i, adjunto in enumerate(adjuntos):
             temp_path = os.path.join(tempfile.gettempdir(), f"{serial}_adjunto_{i}_{adjunto.filename}")
             with open(temp_path, "wb") as f:
                 f.write(await adjunto.read())
             adjuntos_paths.append(temp_path)
     
-    # ✅ Enviar emails según acción
-    if accion != 'tthh' and accion != 'falsa':
-        # Email a la empleada
+    # ✅ SISTEMA HÍBRIDO: IA vs Plantillas
+    from app.ia_redactor import (
+        redactar_email_incompleta, 
+        redactar_email_ilegible, 
+        redactar_alerta_tthh
+    )
+    
+    contenido_ia = None
+    
+    # ========== LÓGICA HÍBRIDA ==========
+    if accion in ['incompleta', 'ilegible']:
+        # ✅ USAR IA para casos complejos
+        print(f"🤖 Generando email con IA Claude Haiku para {serial}...")
+        
+        if accion == 'incompleta':
+            contenido_ia = redactar_email_incompleta(
+                empleado.nombre if empleado else 'Colaborador/a',
+                serial,
+                checks,
+                caso.tipo.value if caso.tipo else 'General'
+            )
+        elif accion == 'ilegible':
+            contenido_ia = redactar_email_ilegible(
+                empleado.nombre if empleado else 'Colaborador/a',
+                serial,
+                checks
+            )
+        
+        # Insertar contenido IA en plantilla
         email_empleada = get_email_template_universal(
             tipo_email=accion,
             nombre=empleado.nombre if empleado else 'Colaborador/a',
@@ -892,30 +915,45 @@ async def validar_caso_con_checks(
             telefono=caso.telefono_form,
             email=caso.email_form,
             link_drive=caso.drive_link,
-            checks_seleccionados=checks
+            checks_seleccionados=checks,
+            contenido_ia=contenido_ia  # ✅ IA aquí
         )
         
+        # Enviar
         enviar_email_con_adjuntos(
             caso.email_form,
-            f"{'✅ Validada' if accion == 'completa' else '⚠️ Acción requerida'} - {serial}",
+            f"{'❌ Incompleta' if accion == 'incompleta' else '⚠️ Ilegible'} - {serial}",
             email_empleada,
             adjuntos_paths
         )
     
-    # ✅ Si es TTHH, enviar alerta a email según empresa
-    if accion == 'tthh':
+    elif accion == 'tthh':
+        # ✅ USAR IA para alerta a TTHH
+        print(f"🚨 Generando alerta TTHH con IA para {serial}...")
+        
+        contenido_ia_tthh = redactar_alerta_tthh(
+            empleado.nombre if empleado else 'Colaborador/a',
+            serial,
+            caso.empresa.nombre if caso.empresa else 'N/A',
+            checks,
+            observaciones
+        )
+        
+        # Email al jefe/TTHH
         email_tthh_destinatario = obtener_email_tthh(caso.empresa.nombre if caso.empresa else 'Default')
         
         email_tthh = get_email_template_universal(
             tipo_email='tthh',
-            nombre=empleado.nombre if empleado else 'Colaborador/a',
+            nombre='Equipo de Talento Humano',
             serial=serial,
             empresa=caso.empresa.nombre if caso.empresa else 'N/A',
             tipo_incapacidad=caso.tipo.value if caso.tipo else 'General',
             telefono=caso.telefono_form,
             email=caso.email_form,
             link_drive=caso.drive_link,
-            checks_seleccionados=checks
+            checks_seleccionados=checks,
+            contenido_ia=contenido_ia_tthh,  # ✅ IA aquí
+            empleado_nombre=empleado.nombre if empleado else 'Colaborador/a'
         )
         
         enviar_email_con_adjuntos(
@@ -925,7 +963,7 @@ async def validar_caso_con_checks(
             adjuntos_paths
         )
         
-        # Email confirmación a la empleada
+        # Email confirmación a la empleada (plantilla estática)
         email_empleada_falsa = get_email_template_universal(
             tipo_email='falsa',
             nombre=empleado.nombre if empleado else 'Colaborador/a',
@@ -943,10 +981,12 @@ async def validar_caso_con_checks(
             email_empleada_falsa
         )
     
-    # ✅ Si es "falsa", solo email confirmación (sin alertar a TTHH)
-    if accion == 'falsa':
-        email_confirmacion = get_email_template_universal(
-            tipo_email='falsa',
+    elif accion in ['completa', 'eps', 'falsa']:
+        # ✅ PLANTILLAS ESTÁTICAS (Gratis)
+        print(f"📄 Usando plantilla estática para {accion}...")
+        
+        email_empleada = get_email_template_universal(
+            tipo_email=accion,
             nombre=empleado.nombre if empleado else 'Colaborador/a',
             serial=serial,
             empresa=caso.empresa.nombre if caso.empresa else 'N/A',
@@ -958,8 +998,8 @@ async def validar_caso_con_checks(
         
         send_html_email(
             caso.email_form,
-            f"✅ Confirmación de recepción - {serial}",
-            email_confirmacion
+            f"{'✅ Validada' if accion == 'completa' else '📋 EPS' if accion == 'eps' else '✅ Confirmación'} - {serial}",
+            email_empleada
         )
     
     # Limpiar adjuntos temporales
@@ -969,13 +1009,108 @@ async def validar_caso_con_checks(
         except:
             pass
     
+    # Registrar evento
+    registrar_evento(
+        db, caso.id, 
+        "validacion_con_ia" if contenido_ia else "validacion_estatica",
+        actor="Validador",
+        estado_anterior=caso.estado.value,
+        estado_nuevo=nuevo_estado.value,
+        motivo=observaciones,
+        metadata={"checks": checks, "usa_ia": bool(contenido_ia)}
+    )
+    
     return {
         "status": "ok",
         "serial": serial,
         "accion": accion,
         "checks": checks,
         "nuevo_link": caso.drive_link,
+        "usa_ia": bool(contenido_ia),
         "mensaje": f"Caso {accion} correctamente"
+    }
+
+
+# ✅ NUEVO: Endpoint para notificación libre con IA
+@router.post("/casos/{serial}/notificar-libre")
+async def notificar_libre_con_ia(
+    serial: str,
+    mensaje_personalizado: str = Form(...),
+    adjuntos: List[UploadFile] = File(default=[]),
+    db: Session = Depends(get_db),
+    _: bool = Depends(verificar_token_admin)
+):
+    """
+    Endpoint para el botón "Extra" - Notificación libre con IA
+    El validador escribe un mensaje informal y la IA lo convierte en profesional
+    """
+    caso = db.query(Case).filter(Case.serial == serial).first()
+    if not caso:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    
+    empleado = caso.empleado
+    
+    # ✅ Redactar con IA
+    from app.ia_redactor import redactar_mensaje_personalizado
+    
+    print(f"🤖 Redactando mensaje personalizado con IA para {serial}...")
+    
+    contenido_ia = redactar_mensaje_personalizado(
+        empleado.nombre if empleado else 'Colaborador/a',
+        serial,
+        mensaje_personalizado
+    )
+    
+    # Procesar adjuntos
+    adjuntos_paths = []
+    if adjuntos:
+        for i, adjunto in enumerate(adjuntos):
+            temp_path = os.path.join(tempfile.gettempdir(), f"{serial}_extra_{i}_{adjunto.filename}")
+            with open(temp_path, "wb") as f:
+                f.write(await adjunto.read())
+            adjuntos_paths.append(temp_path)
+    
+    # Insertar en plantilla
+    email_personalizado = get_email_template_universal(
+        tipo_email='extra',
+        nombre=empleado.nombre if empleado else 'Colaborador/a',
+        serial=serial,
+        empresa=caso.empresa.nombre if caso.empresa else 'N/A',
+        tipo_incapacidad=caso.tipo.value if caso.tipo else 'General',
+        telefono=caso.telefono_form,
+        email=caso.email_form,
+        link_drive=caso.drive_link,
+        contenido_ia=contenido_ia
+    )
+    
+    # Enviar
+    enviar_email_con_adjuntos(
+        caso.email_form,
+        f"📬 Actualización - {serial}",
+        email_personalizado,
+        adjuntos_paths
+    )
+    
+    # Limpiar adjuntos
+    for temp_file in adjuntos_paths:
+        try:
+            os.remove(temp_file)
+        except:
+            pass
+    
+    # Registrar evento
+    registrar_evento(
+        db, caso.id, 
+        "notificacion_libre_ia",
+        actor="Validador",
+        motivo=mensaje_personalizado[:200],  # Primeros 200 caracteres
+        metadata={"mensaje_original": mensaje_personalizado}
+    )
+    
+    return {
+        "status": "ok",
+        "serial": serial,
+        "mensaje": "Notificación enviada correctamente"
     }
 
 @router.get("/checks-disponibles/{tipo_incapacidad}")

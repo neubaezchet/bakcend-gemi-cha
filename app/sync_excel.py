@@ -1,7 +1,6 @@
 """
 Sincronizacion AUTOMATICA desde Google Sheets a PostgreSQL
-Descarga el Excel cada 60 segundos desde Google Drive
-No requiere hacer push a Git
+Ahora incluye información de jefes
 """
 
 import os
@@ -18,24 +17,24 @@ LOCAL_CACHE_PATH = "/tmp/base_empleados_cache.xlsx"
 def descargar_excel_desde_drive():
     """Descarga el Excel desde Google Drive"""
     try:
-        print(f"Descargando Excel desde Google Sheets...")
+        print(f"📥 Descargando Excel desde Google Sheets...")
         response = requests.get(EXCEL_DOWNLOAD_URL, timeout=30)
         
         if response.status_code == 200:
             with open(LOCAL_CACHE_PATH, 'wb') as f:
                 f.write(response.content)
-            print(f"Excel descargado correctamente ({len(response.content)} bytes)")
+            print(f"✅ Excel descargado correctamente ({len(response.content)} bytes)")
             return LOCAL_CACHE_PATH
         else:
-            print(f"Error descargando Excel: HTTP {response.status_code}")
+            print(f"❌ Error descargando Excel: HTTP {response.status_code}")
             if os.path.exists(LOCAL_CACHE_PATH):
-                print(f"Usando cache anterior")
+                print(f"⚠️ Usando cache anterior")
                 return LOCAL_CACHE_PATH
             return None
     except Exception as e:
-        print(f"Error descargando Excel: {e}")
+        print(f"❌ Error descargando Excel: {e}")
         if os.path.exists(LOCAL_CACHE_PATH):
-            print(f"Usando cache anterior")
+            print(f"⚠️ Usando cache anterior")
             return LOCAL_CACHE_PATH
         return None
 
@@ -45,24 +44,24 @@ def sincronizar_empleado_desde_excel(cedula: str):
     try:
         empleado_bd = db.query(Employee).filter(Employee.cedula == cedula).first()
         if empleado_bd:
-            print(f"Empleado {cedula} ya esta en BD")
+            print(f"✅ Empleado {cedula} ya esta en BD")
             return empleado_bd
         
         excel_path = descargar_excel_desde_drive()
         if not excel_path:
-            print(f"No se pudo descargar el Excel")
+            print(f"❌ No se pudo descargar el Excel")
             return None
         
         df = pd.read_excel(excel_path)
         try:
             cedula_int = int(cedula)
         except ValueError:
-            print(f"Cedula invalida: {cedula}")
+            print(f"❌ Cedula invalida: {cedula}")
             return None
         
         empleado_excel = df[df["cedula"] == cedula_int]
         if empleado_excel.empty:
-            print(f"Empleado {cedula} no encontrado en Excel")
+            print(f"❌ Empleado {cedula} no encontrado en Excel")
             return None
         
         row = empleado_excel.iloc[0]
@@ -73,8 +72,9 @@ def sincronizar_empleado_desde_excel(cedula: str):
             db.add(company)
             db.commit()
             db.refresh(company)
-            print(f"Empresa creada: {empresa_nombre}")
+            print(f"✅ Empresa creada: {empresa_nombre}")
         
+        # ✅ NUEVO: Incluir información de jefes
         nuevo_empleado = Employee(
             cedula=str(row["cedula"]),
             nombre=row["nombre"],
@@ -82,15 +82,19 @@ def sincronizar_empleado_desde_excel(cedula: str):
             telefono=str(row.get("telefono", "")) if pd.notna(row.get("telefono")) else None,
             company_id=company.id,
             eps=row.get("eps", None),
+            jefe_nombre=row.get("jefe_nombre", None),
+            jefe_email=row.get("jefe_email", None),
+            jefe_cargo=row.get("jefe_cargo", None),
+            area_trabajo=row.get("area_trabajo", None),
             activo=True
         )
         db.add(nuevo_empleado)
         db.commit()
         db.refresh(nuevo_empleado)
-        print(f"Empleado {cedula} sincronizado: {nuevo_empleado.nombre}")
+        print(f"✅ Empleado {cedula} sincronizado: {nuevo_empleado.nombre}")
         return nuevo_empleado
     except Exception as e:
-        print(f"Error sincronizando {cedula}: {e}")
+        print(f"❌ Error sincronizando {cedula}: {e}")
         db.rollback()
         return None
     finally:
@@ -100,14 +104,14 @@ def sincronizar_excel_completo():
     """Sincroniza TODO el Excel a PostgreSQL (desde Google Sheets)"""
     db = SessionLocal()
     try:
-        print(f"Iniciando sync Google Sheets a PostgreSQL...")
+        print(f"🔄 Iniciando sync Google Sheets a PostgreSQL...")
         excel_path = descargar_excel_desde_drive()
         if not excel_path:
-            print(f"No se pudo descargar el Excel, sync cancelado")
+            print(f"❌ No se pudo descargar el Excel, sync cancelado")
             return
         
         df = pd.read_excel(excel_path)
-        print(f"Excel cargado: {len(df)} filas")
+        print(f"📊 Excel cargado: {len(df)} filas")
         cedulas_excel = set(str(int(row["cedula"])) for _, row in df.iterrows() if pd.notna(row["cedula"]))
         empleados_bd = db.query(Employee).all()
         cedulas_bd = {emp.cedula for emp in empleados_bd}
@@ -124,6 +128,13 @@ def sincronizar_excel_completo():
                 telefono = str(row.get("telefono", "")) if pd.notna(row.get("telefono")) else None
                 eps = row.get("eps", None)
                 empresa_nombre = row["empresa"]
+                
+                # ✅ NUEVO: Extraer datos de jefes
+                jefe_nombre = row.get("jefe_nombre", None)
+                jefe_email = row.get("jefe_email", None)
+                jefe_cargo = row.get("jefe_cargo", None)
+                area_trabajo = row.get("area_trabajo", None)
+                
                 company = db.query(Company).filter(Company.nombre == empresa_nombre).first()
                 if not company:
                     company = Company(nombre=empresa_nombre, activa=True)
@@ -140,6 +151,10 @@ def sincronizar_excel_completo():
                         telefono=telefono,
                         company_id=company.id,
                         eps=eps,
+                        jefe_nombre=jefe_nombre,
+                        jefe_email=jefe_email,
+                        jefe_cargo=jefe_cargo,
+                        area_trabajo=area_trabajo,
                         activo=True
                     )
                     db.add(nuevo_empleado)
@@ -162,6 +177,21 @@ def sincronizar_excel_completo():
                     if empleado.company_id != company.id: 
                         empleado.company_id = company.id
                         cambios = True
+                    
+                    # ✅ NUEVO: Actualizar datos de jefes
+                    if empleado.jefe_nombre != jefe_nombre:
+                        empleado.jefe_nombre = jefe_nombre
+                        cambios = True
+                    if empleado.jefe_email != jefe_email:
+                        empleado.jefe_email = jefe_email
+                        cambios = True
+                    if empleado.jefe_cargo != jefe_cargo:
+                        empleado.jefe_cargo = jefe_cargo
+                        cambios = True
+                    if empleado.area_trabajo != area_trabajo:
+                        empleado.area_trabajo = area_trabajo
+                        cambios = True
+                    
                     if not empleado.activo: 
                         empleado.activo = True
                         cambios = True
@@ -169,7 +199,7 @@ def sincronizar_excel_completo():
                         db.commit()
                         actualizados += 1
             except Exception as e:
-                print(f"Error en fila {row.get('cedula', 'N/A')}: {e}")
+                print(f"❌ Error en fila {row.get('cedula', 'N/A')}: {e}")
                 db.rollback()
         
         for empleado in empleados_bd:
@@ -179,11 +209,11 @@ def sincronizar_excel_completo():
                 desactivados += 1
         
         if nuevos > 0 or actualizados > 0 or desactivados > 0:
-            print(f"Sync completado: {nuevos} nuevos, {actualizados} actualizados, {desactivados} desactivados")
+            print(f"✅ Sync completado: {nuevos} nuevos, {actualizados} actualizados, {desactivados} desactivados")
         else:
-            print(f"Sync: Sin cambios detectados")
+            print(f"ℹ️ Sync: Sin cambios detectados")
     except Exception as e:
-        print(f"Error en sync: {e}")
+        print(f"❌ Error en sync: {e}")
         import traceback
         traceback.print_exc()
         db.rollback()

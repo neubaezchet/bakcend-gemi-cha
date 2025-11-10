@@ -140,26 +140,42 @@ DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "base_empleado
 # ==================== INICIALIZACIÓN ====================
 
 from app.sync_scheduler import iniciar_sincronizacion_automatica
+from app.scheduler_recordatorios import iniciar_scheduler_recordatorios  # ✅ NUEVO
 
-scheduler = None
+scheduler_sync = None
+scheduler_recordatorios = None  # ✅ NUEVO
 
 @app.on_event("startup")
 def startup_event():
-    global scheduler
+    global scheduler_sync, scheduler_recordatorios
     init_db()
     print("🚀 API iniciada")
+    
     try:
-        scheduler = iniciar_sincronizacion_automatica()
+        # Sincronización Excel
+        scheduler_sync = iniciar_sincronizacion_automatica()
         print("✅ Sincronización automática activada")
     except Exception as e:
         print(f"⚠️ Error iniciando sync: {e}")
+    
+    try:
+        # ✅ NUEVO: Scheduler de recordatorios
+        scheduler_recordatorios = iniciar_scheduler_recordatorios()
+        print("✅ Sistema de recordatorios activado")
+    except Exception as e:
+        print(f"⚠️ Error iniciando recordatorios: {e}")
 
 @app.on_event("shutdown")
 def shutdown_event():
-    global scheduler
-    if scheduler:
-        scheduler.shutdown()
+    global scheduler_sync, scheduler_recordatorios
+    
+    if scheduler_sync:
+        scheduler_sync.shutdown()
         print("🛑 Sincronización detenida")
+    
+    if scheduler_recordatorios:  # ✅ NUEVO
+        scheduler_recordatorios.shutdown()
+        print("🛑 Recordatorios detenidos")
 
 # ==================== UTILIDADES ====================
 

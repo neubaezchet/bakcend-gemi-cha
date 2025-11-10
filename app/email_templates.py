@@ -611,4 +611,234 @@ def get_falsa_template(nombre, serial, empresa, tipo_incapacidad, telefono, emai
         telefono=telefono,
         email=email,
         link_drive=link_drive
+    ) # ==================== AL FINAL DEL ARCHIVO email_templates.py ====================
+
+def get_email_template_universal_con_ia(
+    tipo_email,  # 'confirmacion', 'incompleta', 'ilegible', 'eps', 'tthh', 'completa', 'falsa', 'recordatorio', 'alerta_jefe'
+    nombre,
+    serial,
+    empresa,
+    tipo_incapacidad,
+    telefono,
+    email,
+    link_drive,
+    checks_seleccionados=[],
+    archivos_nombres=None,
+    quinzena=None,
+    contenido_ia=None,  # ✅ NUEVO: Contenido generado por IA
+    empleado_nombre=None  # ✅ NUEVO: Para emails a jefes
+):
+    """
+    PLANTILLA UNIVERSAL CON SOPORTE PARA CONTENIDO IA
+    """
+    
+    configs = {
+        'confirmacion': {
+            'color_principal': '#667eea',
+            'color_secundario': '#764ba2',
+            'icono': '✅',
+            'titulo': 'Recibido Confirmado',
+            'mostrar_requisitos': True,
+            'mostrar_boton_reenvio': False,
+            'mostrar_plazo': False,
+        },
+        'incompleta': {
+            'color_principal': '#ef4444',
+            'color_secundario': '#dc2626',
+            'icono': '❌',
+            'titulo': 'Documentación Incompleta',
+            'mostrar_requisitos': True,
+            'mostrar_boton_reenvio': True,
+            'mostrar_plazo': True,
+        },
+        'ilegible': {
+            'color_principal': '#f59e0b',
+            'color_secundario': '#d97706',
+            'icono': '⚠️',
+            'titulo': 'Documento Ilegible',
+            'mostrar_requisitos': True,
+            'mostrar_boton_reenvio': True,
+            'mostrar_plazo': True,
+        },
+        'tthh': {
+            'color_principal': '#dc2626',
+            'color_secundario': '#991b1b',
+            'icono': '🚨',
+            'titulo': 'ALERTA - Presunto Fraude',
+            'mostrar_requisitos': True,
+            'mostrar_boton_reenvio': False,
+            'mostrar_plazo': False,
+        },
+        'recordatorio': {  # ✅ NUEVO
+            'color_principal': '#f59e0b',
+            'color_secundario': '#d97706',
+            'icono': '⏰',
+            'titulo': 'Recordatorio - Documentación Pendiente',
+            'mostrar_requisitos': False,
+            'mostrar_boton_reenvio': True,
+            'mostrar_plazo': True,
+        },
+        'alerta_jefe': {  # ✅ NUEVO
+            'color_principal': '#3b82f6',
+            'color_secundario': '#2563eb',
+            'icono': '📊',
+            'titulo': 'Seguimiento - Incapacidad Pendiente',
+            'mostrar_requisitos': False,
+            'mostrar_boton_reenvio': False,
+            'mostrar_plazo': False,
+        },
+        # ... resto de configs existentes
+    }
+    
+    config = configs.get(tipo_email, configs['confirmacion'])
+    
+    # ✅ GENERAR MENSAJE PRINCIPAL
+    if contenido_ia:
+        # Si hay contenido generado por IA, usarlo
+        mensaje_principal = f'''
+        <div style="background: #f8f9fa; border-left: 4px solid {config['color_principal']}; padding: 20px; margin: 20px 0; border-radius: 0 8px 8px 0;">
+            <div style="color: #333; line-height: 1.6; white-space: pre-wrap;">
+                {contenido_ia}
+            </div>
+        </div>
+        '''
+    else:
+        # Usar generador estático original
+        mensaje_principal = generar_mensaje_segun_tipo(tipo_email, checks_seleccionados, tipo_incapacidad, serial, quinzena, archivos_nombres)
+    
+    # ✅ GENERAR LISTA DE REQUISITOS
+    requisitos_html = ''
+    if config['mostrar_requisitos']:
+        requisitos_html = generar_checklist_requisitos(tipo_incapacidad, checks_seleccionados, tipo_email)
+    
+    # ✅ BOTÓN DE REENVÍO
+    boton_reenvio = ''
+    if config['mostrar_boton_reenvio']:
+        boton_reenvio = f'''
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="https://incaneurobaeza.com/reenviar/{serial}" 
+               style="display: inline-block; background: linear-gradient(135deg, {config['color_principal']} 0%, {config['color_secundario']} 100%); 
+                      color: white; padding: 16px 40px; text-decoration: none; border-radius: 25px; 
+                      font-weight: bold; font-size: 16px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
+                📄 Subir Documentos Corregidos
+            </a>
+        </div>
+        '''
+    
+    # ✅ PLAZO
+    plazo_html = ''
+    if config['mostrar_plazo']:
+        plazo_html = '''
+        <div style="background: #fff3cd; border: 2px solid #ffc107; padding: 15px; border-radius: 8px; margin: 25px 0; text-align: center;">
+            <p style="margin: 0; color: #856404; font-weight: bold;">
+                ⏰ Por favor, envía la documentación corregida lo antes posible
+            </p>
+        </div>
+        '''
+    
+    # ✅ SECCIÓN ESPECIAL PARA EMAILS A JEFES
+    seccion_jefe = ''
+    if tipo_email == 'alerta_jefe' and empleado_nombre:
+        seccion_jefe = f'''
+        <div style="background: #e0f2fe; border: 2px solid #0ea5e9; padding: 20px; border-radius: 8px; margin: 25px 0;">
+            <h4 style="margin-top: 0; color: #0369a1;">
+                👤 Información del Colaborador/a
+            </h4>
+            <table style="width: 100%; font-size: 14px;">
+                <tr>
+                    <td style="padding: 8px 0; color: #666; font-weight: bold; width: 150px;">Nombre:</td>
+                    <td style="padding: 8px 0; color: #333;">{empleado_nombre}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Serial:</td>
+                    <td style="padding: 8px 0; color: #333;"><strong style="color: #dc2626;">{serial}</strong></td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Empresa:</td>
+                    <td style="padding: 8px 0; color: #333;">{empresa}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Contacto:</td>
+                    <td style="padding: 8px 0; color: #333;">{telefono} • {email}</td>
+                </tr>
+            </table>
+        </div>
+        '''
+    
+    # ✅ PLANTILLA HTML COMPLETA
+    return f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <title>{config['titulo']} - {serial}</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 20px;">
+        <div style="max-width: 650px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.15);">
+            
+            <!-- Header -->
+            <div style="background: linear-gradient(135deg, {config['color_principal']} 0%, {config['color_secundario']} 100%); color: white; padding: 30px; text-align: center;">
+                <h1 style="margin: 0; font-size: 26px;">{config['icono']} {config['titulo']}</h1>
+                <p style="margin: 5px 0 0 0; font-style: italic;">IncaNeurobaeza</p>
+            </div>
+            
+            <!-- Content -->
+            <div style="padding: 30px;">
+                <p style="font-size: 16px; color: #333;">
+                    {'Estimado/a <strong>' + nombre + '</strong>,' if tipo_email != 'alerta_jefe' else 'Estimado/a <strong>' + nombre + '</strong>,'}
+                </p>
+                
+                <!-- Mensaje Principal (IA o Estático) -->
+                {mensaje_principal}
+                
+                <!-- Sección Jefe (solo para alerta_jefe) -->
+                {seccion_jefe}
+                
+                <!-- Checklist de Requisitos -->
+                {requisitos_html}
+                
+                <!-- Botón de Reenvío -->
+                {boton_reenvio}
+                
+                <!-- Plazo -->
+                {plazo_html}
+                
+                <!-- Link a Drive -->
+                <div style="text-align: center; margin: 20px 0;">
+                    <a href="{link_drive}" style="color: #3b82f6; text-decoration: underline; font-size: 14px;">
+                        📄 Ver documentos en Drive
+                    </a>
+                </div>
+                
+                <!-- Contacto -->
+                <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                    <p style="margin: 0; color: #4b5563; font-size: 13px; text-align: center;">
+                        📞 <strong>{telefono}</strong> &nbsp;|&nbsp; 📧 <strong>{email}</strong>
+                    </p>
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <div style="background: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e9ecef;">
+                <strong style="color: #667eea; font-size: 16px;">IncaNeurobaeza</strong>
+                <div style="color: #6c757d; font-style: italic; margin-top: 5px; font-size: 14px;">
+                    "Trabajando para ayudarte"
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+# ✅ WRAPPER para mantener compatibilidad
+def get_email_template_universal(tipo_email, nombre, serial, empresa, tipo_incapacidad, 
+                                 telefono, email, link_drive, checks_seleccionados=[], 
+                                 archivos_nombres=None, quinzena=None, contenido_ia=None, 
+                                 empleado_nombre=None):
+    """Wrapper para usar la nueva función con IA"""
+    return get_email_template_universal_con_ia(
+        tipo_email, nombre, serial, empresa, tipo_incapacidad,
+        telefono, email, link_drive, checks_seleccionados,
+        archivos_nombres, quinzena, contenido_ia, empleado_nombre
     )
