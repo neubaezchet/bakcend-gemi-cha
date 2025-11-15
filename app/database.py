@@ -52,6 +52,7 @@ class Company(Base):
     nit = Column(String(50), unique=True)
     contacto_email = Column(String(200))
     contacto_telefono = Column(String(50))
+    email_copia = Column(String(500))  # ✅ NUEVO: Email de copia
     activa = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

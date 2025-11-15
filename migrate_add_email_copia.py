@@ -1,10 +1,28 @@
 """
 Script de migración: Agregar columna email_copia a companies
-Ejecutar: python migrate_add_email_copia.py
+Ejecutar desde PowerShell:
+$env:DATABASE_URL="postgres://..."; python migrate_add_email_copia.py
 """
 
-from sqlalchemy import text
-from database import engine, SessionLocal
+from sqlalchemy import text, create_engine
+from sqlalchemy.orm import sessionmaker
+import os
+
+# Obtener URL de la base de datos
+database_url = os.environ.get("DATABASE_URL")
+
+if not database_url:
+    print("❌ ERROR: Falta la variable DATABASE_URL")
+    print("Configúrala así:")
+    print('$env:DATABASE_URL="postgres://..."')
+    exit(1)
+
+# Render usa postgres:// pero SQLAlchemy necesita postgresql://
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+engine = create_engine(database_url)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def migrar_agregar_email_copia():
     """Agrega columna email_copia a la tabla companies"""
@@ -30,12 +48,12 @@ def migrar_agregar_email_copia():
         """))
         
         if result.fetchone():
-            print("✅ Verificación exitosa: columna existe\n")
+            print("✅ Verificación exitosa: columna existe")
         else:
-            print("⚠️ Advertencia: columna no encontrada\n")
+            print("⚠️ Advertencia: columna no encontrada")
         
         # Mostrar estructura actual
-        print("📋 Estructura actual de 'companies':")
+        print("\n📋 Estructura actual de 'companies':")
         result = db.execute(text("""
             SELECT column_name, data_type 
             FROM information_schema.columns 

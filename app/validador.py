@@ -91,8 +91,11 @@ def registrar_evento(db: Session, case_id: int, accion: str, actor: str = "Siste
     db.add(evento)
     db.commit()
 
-def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[]):
-    """Envía email con adjuntos usando Brevo"""
+def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[], caso=None, db=None):
+    """
+    Envía email con adjuntos usando Brevo
+    ✅ AHORA CON SISTEMA DE COPIA AUTOMÁTICA desde Excel Pestaña 2
+    """
     brevo_api_key = os.environ.get("BREVO_API_KEY")
     brevo_from_email = os.environ.get("BREVO_FROM_EMAIL", "notificaciones@smtp-brevo.com")
     reply_to_email = os.environ.get("SMTP_EMAIL", "davidbaezaospino@gmail.com")
@@ -117,8 +120,19 @@ def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[]):
                         'name': os.path.basename(adjunto_path)
                     })
         
+        # ✅ OBTENER EMAIL DE COPIA DESDE LA BD (Pestaña 2 del Excel)
+        cc_email = None
+        if caso and caso.empresa and caso.empresa.email_copia:
+            cc_email = caso.empresa.email_copia
+            print(f"📧 Email de copia configurado: {cc_email} ({caso.empresa.nombre})")
+        
+        # ✅ Preparar destinatarios
+        to_list = [{"email": to_email}]
+        cc_list = [{"email": cc_email}] if cc_email else None
+        
         send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
-            to=[{"email": to_email}],
+            to=to_list,
+            cc=cc_list,  # ✅ COPIA AUTOMÁTICA
             sender={"name": "IncaNeurobaeza", "email": brevo_from_email},
             reply_to={"email": reply_to_email},
             subject=subject,
@@ -127,15 +141,21 @@ def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[]):
         )
         
         api_response = api_instance.send_transac_email(send_smtp_email)
-        print(f"✅ Email enviado con {len(attachments)} adjunto(s)")
+        
+        if cc_email:
+            print(f"✅ Email enviado a {to_email} con COPIA a {cc_email} ({len(attachments)} adjunto(s))")
+        else:
+            print(f"✅ Email enviado a {to_email} ({len(attachments)} adjunto(s))")
+        
         return True
     except Exception as e:
         print(f"❌ Error enviando email: {e}")
         return False
 
-def send_html_email(to_email, subject, html_body):
-    """Envía email sin adjuntos"""
-    return enviar_email_con_adjuntos(to_email, subject, html_body, [])
+
+def send_html_email(to_email, subject, html_body, caso=None):
+    """Envía email sin adjuntos (wrapper con soporte para copia)"""
+    return enviar_email_con_adjuntos(to_email, subject, html_body, [], caso=caso)
 
 def obtener_email_tthh(empresa_nombre):
     """Retorna el email de TTHH según la empresa"""
@@ -924,7 +944,8 @@ async def validar_caso_con_checks(
             caso.email_form,
             f"{'❌ Incompleta' if accion == 'incompleta' else '⚠️ Ilegible'} - {serial}",
             email_empleada,
-            adjuntos_paths
+            adjuntos_paths,
+            caso=caso  # ✅ COPIA AUTOMÁTICA
         )
     
     elif accion == 'tthh':
@@ -978,7 +999,8 @@ async def validar_caso_con_checks(
         send_html_email(
             caso.email_form,
             f"✅ Confirmación de recepción - {serial}",
-            email_empleada_falsa
+            email_empleada_falsa,
+            caso=caso  # ✅ COPIA AUTOMÁTICA
         )
     
     elif accion in ['completa', 'eps', 'falsa']:
@@ -999,7 +1021,8 @@ async def validar_caso_con_checks(
         send_html_email(
             caso.email_form,
             f"{'✅ Validada' if accion == 'completa' else '📋 EPS' if accion == 'eps' else '✅ Confirmación'} - {serial}",
-            email_empleada
+            email_empleada,
+            caso=caso  # ✅ COPIA AUTOMÁTICA
         )
     
     # Limpiar adjuntos temporales
@@ -1088,7 +1111,8 @@ async def notificar_libre_con_ia(
         caso.email_form,
         f"📬 Actualización - {serial}",
         email_personalizado,
-        adjuntos_paths
+        adjuntos_paths,
+        caso=caso  # ✅ COPIA AUTOMÁTICA
     )
     
     # Limpiar adjuntos

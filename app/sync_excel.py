@@ -1,6 +1,6 @@
 """
 Sincronizacion AUTOMATICA desde Google Sheets a PostgreSQL
-Ahora incluye información de jefes
+Ahora incluye Pestaña 2: Empresas con emails de copia
 """
 
 import os
@@ -38,6 +38,81 @@ def descargar_excel_desde_drive():
             return LOCAL_CACHE_PATH
         return None
 
+
+# ✅ NUEVA FUNCIÓN: Sincronizar empresas desde Pestaña 2
+def sincronizar_empresas_desde_excel():
+    """
+    Sincroniza la Pestaña 2: Empresas desde Google Sheets
+    Actualiza los emails de copia automáticamente
+    """
+    db = SessionLocal()
+    try:
+        excel_path = descargar_excel_desde_drive()
+        if not excel_path:
+            print(f"❌ No se pudo descargar el Excel para sync de empresas")
+            return
+        
+        # ✅ Leer la Pestaña 2: "Empresas"
+        try:
+            df_empresas = pd.read_excel(excel_path, sheet_name='Empresas')
+            print(f"📊 Pestaña 'Empresas' cargada: {len(df_empresas)} filas")
+        except Exception as e:
+            print(f"⚠️ No se encontró la pestaña 'Empresas': {e}")
+            print(f"   Verifica que el Excel tenga una pestaña llamada 'Empresas'")
+            return
+        
+        actualizados = creados = 0
+        
+        for _, row in df_empresas.iterrows():
+            try:
+                if pd.isna(row.get('empresa')) or pd.isna(row.get('email_copia')):
+                    continue
+                
+                empresa_nombre = str(row['empresa']).strip()
+                email_copia = str(row['email_copia']).strip()
+                contacto_principal = row.get('contacto_principal', None)
+                
+                # Buscar o crear empresa en BD
+                empresa = db.query(Company).filter(Company.nombre == empresa_nombre).first()
+                
+                if not empresa:
+                    # Crear nueva empresa
+                    empresa = Company(
+                        nombre=empresa_nombre,
+                        email_copia=email_copia,
+                        contacto_email=email_copia,  # También como contacto principal
+                        activa=True
+                    )
+                    db.add(empresa)
+                    db.commit()
+                    creados += 1
+                    print(f"  ✅ Empresa creada: {empresa_nombre} → {email_copia}")
+                else:
+                    # Actualizar email de copia si cambió
+                    if empresa.email_copia != email_copia:
+                        empresa.email_copia = email_copia
+                        db.commit()
+                        actualizados += 1
+                        print(f"  🔄 Email actualizado: {empresa_nombre} → {email_copia}")
+            
+            except Exception as e:
+                print(f"❌ Error en fila empresa '{row.get('empresa', 'N/A')}': {e}")
+                db.rollback()
+        
+        if creados > 0 or actualizados > 0:
+            print(f"✅ Sync empresas completado: {creados} nuevas, {actualizados} actualizadas")
+        else:
+            print(f"ℹ️ Sync empresas: Sin cambios detectados")
+    
+    except Exception as e:
+        print(f"❌ Error en sync empresas: {e}")
+        import traceback
+        traceback.print_exc()
+        db.rollback()
+    finally:
+        db.close()
+
+
 def sincronizar_empleado_desde_excel(cedula: str):
     """Sincroniza UN empleado especifico (sync instantanea)"""
     db = SessionLocal()
@@ -52,7 +127,7 @@ def sincronizar_empleado_desde_excel(cedula: str):
             print(f"❌ No se pudo descargar el Excel")
             return None
         
-        df = pd.read_excel(excel_path)
+        df = pd.read_excel(excel_path, sheet_name=0)  # Primera pestaña
         try:
             cedula_int = int(cedula)
         except ValueError:
@@ -74,7 +149,7 @@ def sincronizar_empleado_desde_excel(cedula: str):
             db.refresh(company)
             print(f"✅ Empresa creada: {empresa_nombre}")
         
-        # ✅ NUEVO: Incluir información de jefes
+        # Incluir información de jefes
         nuevo_empleado = Employee(
             cedula=str(row["cedula"]),
             nombre=row["nombre"],
@@ -100,8 +175,12 @@ def sincronizar_empleado_desde_excel(cedula: str):
     finally:
         db.close()
 
+
 def sincronizar_excel_completo():
-    """Sincroniza TODO el Excel a PostgreSQL (desde Google Sheets)"""
+    """
+    Sincroniza TODO el Excel a PostgreSQL (desde Google Sheets)
+    Incluye ambas pestañas: Empleados y Empresas
+    """
     db = SessionLocal()
     try:
         print(f"🔄 Iniciando sync Google Sheets a PostgreSQL...")
@@ -110,8 +189,10 @@ def sincronizar_excel_completo():
             print(f"❌ No se pudo descargar el Excel, sync cancelado")
             return
         
-        df = pd.read_excel(excel_path)
-        print(f"📊 Excel cargado: {len(df)} filas")
+        # ========== SYNC PESTAÑA 1: EMPLEADOS ==========
+        df = pd.read_excel(excel_path, sheet_name=0)  # Primera pestaña
+        print(f"📊 Pestaña 'Empleados' cargada: {len(df)} filas")
+        
         cedulas_excel = set(str(int(row["cedula"])) for _, row in df.iterrows() if pd.notna(row["cedula"]))
         empleados_bd = db.query(Employee).all()
         cedulas_bd = {emp.cedula for emp in empleados_bd}
@@ -129,7 +210,7 @@ def sincronizar_excel_completo():
                 eps = row.get("eps", None)
                 empresa_nombre = row["empresa"]
                 
-                # ✅ NUEVO: Extraer datos de jefes
+                # Extraer datos de jefes
                 jefe_nombre = row.get("jefe_nombre", None)
                 jefe_email = row.get("jefe_email", None)
                 jefe_cargo = row.get("jefe_cargo", None)
@@ -178,7 +259,7 @@ def sincronizar_excel_completo():
                         empleado.company_id = company.id
                         cambios = True
                     
-                    # ✅ NUEVO: Actualizar datos de jefes
+                    # Actualizar datos de jefes
                     if empleado.jefe_nombre != jefe_nombre:
                         empleado.jefe_nombre = jefe_nombre
                         cambios = True
@@ -209,9 +290,13 @@ def sincronizar_excel_completo():
                 desactivados += 1
         
         if nuevos > 0 or actualizados > 0 or desactivados > 0:
-            print(f"✅ Sync completado: {nuevos} nuevos, {actualizados} actualizados, {desactivados} desactivados")
+            print(f"✅ Sync empleados: {nuevos} nuevos, {actualizados} actualizados, {desactivados} desactivados")
         else:
-            print(f"ℹ️ Sync: Sin cambios detectados")
+            print(f"ℹ️ Sync empleados: Sin cambios detectados")
+        
+        # ========== SYNC PESTAÑA 2: EMPRESAS ==========
+        sincronizar_empresas_desde_excel()
+        
     except Exception as e:
         print(f"❌ Error en sync: {e}")
         import traceback
