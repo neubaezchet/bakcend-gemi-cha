@@ -1,6 +1,6 @@
 """
 Sistema de Templates de Email Unificado con Checklists Dinámicos
-IncaNeurobaeza - 2024
+IncaBaeza - 2024
 """
 
 # ==================== PLANTILLA BASE ÚNICA ====================
