@@ -133,7 +133,7 @@ def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[], c
         send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
             to=to_list,
             cc=cc_list,  # ✅ COPIA AUTOMÁTICA
-            sender={"name": "IncaNeurobaeza", "email": brevo_from_email},
+            sender={"name": "IncaBaeza", "email": brevo_from_email},
             reply_to={"email": reply_to_email},
             subject=subject,
             html_content=html_body,
@@ -708,7 +708,7 @@ async def busqueda_relacional_desde_excel(
     
     resultados_response = await busqueda_relacional(request, db, True)
     
-    historial.resultados_count = resultados_response["total_encontrados"]
+    historial.resultados_count = resultados_ response["total_encontrados"]
     db.commit()
     
     return {
@@ -939,10 +939,12 @@ async def validar_caso_con_checks(
             contenido_ia=contenido_ia  # ✅ IA aquí
         )
         
-        # Enviar
+        # Enviar con formato de asunto actualizado
+        estado_label = 'Incompleta' if accion == 'incompleta' else 'Ilegible'
+        asunto = f"CC {caso.cedula} - {serial} - {estado_label} - {empleado.nombre if empleado else 'Colaborador'} - {caso.empresa.nombre if caso.empresa else 'N/A'}"
         enviar_email_con_adjuntos(
             caso.email_form,
-            f"{'❌ Incompleta' if accion == 'incompleta' else '⚠️ Ilegible'} - {serial}",
+            asunto,
             email_empleada,
             adjuntos_paths,
             caso=caso  # ✅ COPIA AUTOMÁTICA
@@ -977,9 +979,10 @@ async def validar_caso_con_checks(
             empleado_nombre=empleado.nombre if empleado else 'Colaborador/a'
         )
         
+        asunto_tthh = f"CC {caso.cedula} - {serial} - TTHH - {empleado.nombre if empleado else 'Colaborador'} - {caso.empresa.nombre if caso.empresa else 'N/A'}"
         enviar_email_con_adjuntos(
             email_tthh_destinatario,
-            f"🚨 ALERTA - Presunto Fraude - {serial}",
+            asunto_tthh,
             email_tthh,
             adjuntos_paths
         )
@@ -996,9 +999,10 @@ async def validar_caso_con_checks(
             link_drive=caso.drive_link
         )
         
+        asunto_confirmacion = f"CC {caso.cedula} - {serial} - Confirmación - {empleado.nombre if empleado else 'Colaborador'} - {caso.empresa.nombre if caso.empresa else 'N/A'}"
         send_html_email(
             caso.email_form,
-            f"✅ Confirmación de recepción - {serial}",
+            asunto_confirmacion,
             email_empleada_falsa,
             caso=caso  # ✅ COPIA AUTOMÁTICA
         )
@@ -1018,9 +1022,16 @@ async def validar_caso_con_checks(
             link_drive=caso.drive_link
         )
         
+        estado_map_asunto = {
+            'completa': 'Validada',
+            'eps': 'EPS',
+            'falsa': 'Confirmación'
+        }
+        estado_label = estado_map_asunto.get(accion, 'Actualización')
+        asunto = f"CC {caso.cedula} - {serial} - {estado_label} - {empleado.nombre if empleado else 'Colaborador'} - {caso.empresa.nombre if caso.empresa else 'N/A'}"
         send_html_email(
             caso.email_form,
-            f"{'✅ Validada' if accion == 'completa' else '📋 EPS' if accion == 'eps' else '✅ Confirmación'} - {serial}",
+            asunto,
             email_empleada,
             caso=caso  # ✅ COPIA AUTOMÁTICA
         )
@@ -1106,10 +1117,11 @@ async def notificar_libre_con_ia(
         contenido_ia=contenido_ia
     )
     
-    # Enviar
+    # Enviar con formato de asunto actualizado
+    asunto = f"CC {caso.cedula} - {serial} - Extra - {empleado.nombre if empleado else 'Colaborador'} - {caso.empresa.nombre if caso.empresa else 'N/A'}"
     enviar_email_con_adjuntos(
         caso.email_form,
-        f"📬 Actualización - {serial}",
+        asunto,
         email_personalizado,
         adjuntos_paths,
         caso=caso  # ✅ COPIA AUTOMÁTICA
