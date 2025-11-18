@@ -1,6 +1,6 @@
 """
 Sincronización AUTOMÁTICA Google Sheets → PostgreSQL
-✅ SOLUCIÓN DEFINITIVA a todos los problemas
+✅ SYNC EXACTO: La BD refleja el Excel tal cual (misma cantidad, mismo orden)
 """
 
 import os
@@ -102,15 +102,16 @@ def sincronizar_empleado_desde_excel(cedula: str):
 
 def sincronizar_excel_completo():
     """
-    ✅ SINCRONIZACIÓN DEFINITIVA
-    - Primero sincroniza empresas (Hoja 2) con emails
-    - Luego sincroniza empleados (Hoja 1)
-    - Elimina/desactiva lo que ya no está en Excel
+    ✅ SYNC EXACTO POR POSICIÓN
+    - Fila 1 Excel = ID 1 en BD
+    - Fila 2 Excel = ID 2 en BD
+    - Si editas Fila 3, actualiza ID 3 (NO crea ID 9)
+    - Si Excel tiene 8 filas, BD tiene 8 empleados activos
     """
     db = SessionLocal()
     try:
         print(f"\n{'='*60}")
-        print(f"🔄 SYNC Google Sheets → PostgreSQL - {datetime.now().strftime('%H:%M:%S')}")
+        print(f"🔄 SYNC EXACTO Excel → PostgreSQL - {datetime.now().strftime('%H:%M:%S')}")
         print(f"{'='*60}\n")
         
         excel_path = descargar_excel_desde_drive()
@@ -123,7 +124,6 @@ def sincronizar_excel_completo():
         empresas_actualizadas = 0
         
         try:
-            # Intentar leer Hoja 2 con diferentes nombres posibles
             df_empresas = None
             nombres_posibles = ['Hoja 2', 'Empresas', 'Sheet2', 'Hoja2']
             
@@ -136,13 +136,10 @@ def sincronizar_excel_completo():
                     continue
             
             if df_empresas is None:
-                print(f"   ⚠️ No se encontró Hoja 2. Nombres intentados: {nombres_posibles}")
-                print(f"   ⚠️ Continuando sin sincronizar emails de copia...\n")
+                print(f"   ⚠️ No se encontró Hoja 2. Continuando sin emails de copia...\n")
             else:
-                # Procesar empresas
                 for _, row in df_empresas.iterrows():
                     try:
-                        # Detectar columna de nombre (puede ser 'nombre' o 'empresa')
                         nombre_col = 'nombre' if 'nombre' in df_empresas.columns else 'empresa'
                         
                         if pd.isna(row.get(nombre_col)) or pd.isna(row.get('email_copia')):
@@ -151,11 +148,9 @@ def sincronizar_excel_completo():
                         empresa_nombre = str(row[nombre_col]).strip()
                         email_copia = str(row['email_copia']).strip()
                         
-                        # Buscar empresa en BD
                         empresa = db.query(Company).filter(Company.nombre == empresa_nombre).first()
                         
                         if empresa:
-                            # Actualizar email de copia
                             if empresa.email_copia != email_copia:
                                 empresa.email_copia = email_copia
                                 empresa.contacto_email = email_copia
@@ -164,7 +159,6 @@ def sincronizar_excel_completo():
                                 empresas_actualizadas += 1
                                 print(f"   🔄 {empresa_nombre} → {email_copia}")
                         else:
-                            # Crear empresa nueva
                             nueva_empresa = Company(
                                 nombre=empresa_nombre,
                                 email_copia=email_copia,
@@ -177,7 +171,7 @@ def sincronizar_excel_completo():
                             print(f"   ➕ {empresa_nombre} → {email_copia}")
                     
                     except Exception as e:
-                        print(f"   ❌ Error en empresa '{row.get(nombre_col, 'N/A')}': {e}")
+                        print(f"   ❌ Error en empresa: {e}")
                         db.rollback()
                 
                 if empresas_actualizadas > 0:
@@ -188,35 +182,29 @@ def sincronizar_excel_completo():
         except Exception as e:
             print(f"   ❌ Error leyendo Hoja 2: {e}\n")
         
-        # ========== PASO 2: SYNC EMPLEADOS (HOJA 1) ==========
-        print(f"📊 PASO 2: Sincronizando empleados (Hoja 1)...")
+        # ========== PASO 2: SYNC EMPLEADOS EXACTO ==========
+        print(f"📊 PASO 2: Sincronizando empleados (MODO EXACTO)...")
         
         df = pd.read_excel(excel_path, sheet_name=0)
-        print(f"   📋 {len(df)} filas cargadas")
+        print(f"   📋 Excel tiene {len(df)} filas")
         
-        # Obtener cédulas del Excel
-        cedulas_excel = set()
-        for _, row in df.iterrows():
-            if pd.notna(row.get("cedula")):
-                try:
-                    cedulas_excel.add(str(int(row["cedula"])))
-                except:
-                    pass
+        # Obtener TODOS los empleados de BD ordenados por ID
+        empleados_bd = db.query(Employee).order_by(Employee.id).all()
+        print(f"   📋 BD tiene {len(empleados_bd)} empleados totales")
         
-        print(f"   📋 {len(cedulas_excel)} cédulas únicas en Excel")
+        # Crear lista de empleados activos en BD
+        empleados_activos = [e for e in empleados_bd if e.activo]
+        print(f"   📋 BD tiene {len(empleados_activos)} empleados activos")
         
-        # Obtener empleados actuales de BD
-        empleados_bd = db.query(Employee).all()
-        print(f"   📋 {len(empleados_bd)} empleados en BD")
+        nuevos = actualizados = eliminados = 0
         
-        nuevos = actualizados = desactivados = 0
-        
-        # Procesar cada empleado del Excel
-        for _, row in df.iterrows():
+        # ✅ SINCRONIZACIÓN POSICIÓN POR POSICIÓN
+        for idx, row in df.iterrows():
             try:
                 if pd.isna(row.get("cedula")) or pd.isna(row.get("nombre")):
                     continue
                 
+                # Datos del Excel
                 cedula = str(int(row["cedula"]))
                 nombre = row["nombre"]
                 correo = row.get("correo", "")
@@ -237,11 +225,31 @@ def sincronizar_excel_completo():
                     db.commit()
                     db.refresh(company)
                 
-                # Buscar empleado por cédula
-                empleado = db.query(Employee).filter(Employee.cedula == cedula).first()
+                # ✅ LÓGICA CLAVE: Buscar empleado en la MISMA POSICIÓN
+                empleado = None
                 
-                if not empleado:
-                    # CREAR NUEVO
+                # Si ya existe un empleado en esta posición (índice)
+                if idx < len(empleados_activos):
+                    empleado = empleados_activos[idx]
+                
+                if empleado:
+                    # ✅ ACTUALIZAR el empleado existente en esta posición
+                    empleado.cedula = cedula
+                    empleado.nombre = nombre
+                    empleado.correo = correo
+                    empleado.telefono = telefono
+                    empleado.company_id = company.id
+                    empleado.eps = eps
+                    empleado.jefe_nombre = jefe_nombre
+                    empleado.jefe_email = jefe_email
+                    empleado.jefe_cargo = jefe_cargo
+                    empleado.area_trabajo = area_trabajo
+                    empleado.activo = True
+                    empleado.updated_at = datetime.utcnow()
+                    db.commit()
+                    actualizados += 1
+                else:
+                    # ✅ CREAR nuevo empleado (si Excel tiene más filas que BD)
                     nuevo_empleado = Employee(
                         cedula=cedula,
                         nombre=nombre,
@@ -258,57 +266,21 @@ def sincronizar_excel_completo():
                     db.add(nuevo_empleado)
                     db.commit()
                     nuevos += 1
-                else:
-                    # ACTUALIZAR EXISTENTE
-                    cambios = False
-                    
-                    if empleado.nombre != nombre: 
-                        empleado.nombre = nombre
-                        cambios = True
-                    if empleado.correo != correo: 
-                        empleado.correo = correo
-                        cambios = True
-                    if empleado.telefono != telefono: 
-                        empleado.telefono = telefono
-                        cambios = True
-                    if empleado.eps != eps: 
-                        empleado.eps = eps
-                        cambios = True
-                    if empleado.company_id != company.id: 
-                        empleado.company_id = company.id
-                        cambios = True
-                    if empleado.jefe_nombre != jefe_nombre:
-                        empleado.jefe_nombre = jefe_nombre
-                        cambios = True
-                    if empleado.jefe_email != jefe_email:
-                        empleado.jefe_email = jefe_email
-                        cambios = True
-                    if empleado.jefe_cargo != jefe_cargo:
-                        empleado.jefe_cargo = jefe_cargo
-                        cambios = True
-                    if empleado.area_trabajo != area_trabajo:
-                        empleado.area_trabajo = area_trabajo
-                        cambios = True
-                    if not empleado.activo: 
-                        empleado.activo = True
-                        cambios = True
-                    
-                    if cambios:
-                        empleado.updated_at = datetime.utcnow()
-                        db.commit()
-                        actualizados += 1
             
             except Exception as e:
-                print(f"   ❌ Error en fila {row.get('cedula', 'N/A')}: {e}")
+                print(f"   ❌ Error en fila {idx + 2}: {e}")
                 db.rollback()
         
-        # DESACTIVAR empleados que ya NO están en Excel
-        for empleado in empleados_bd:
-            if empleado.cedula not in cedulas_excel and empleado.activo:
-                empleado.activo = False
-                empleado.updated_at = datetime.utcnow()
+        # ✅ ELIMINAR empleados sobrantes (si BD tiene más que Excel)
+        total_filas_excel = len(df)
+        if len(empleados_activos) > total_filas_excel:
+            print(f"   🗑️ BD tiene {len(empleados_activos) - total_filas_excel} empleados de más, eliminando...")
+            for i in range(total_filas_excel, len(empleados_activos)):
+                empleado_sobra = empleados_activos[i]
+                empleado_sobra.activo = False
+                empleado_sobra.updated_at = datetime.utcnow()
                 db.commit()
-                desactivados += 1
+                eliminados += 1
         
         # RESUMEN
         print(f"\n{'='*60}")
@@ -316,7 +288,8 @@ def sincronizar_excel_completo():
         print(f"   • Empresas actualizadas: {empresas_actualizadas}")
         print(f"   • Empleados nuevos: {nuevos}")
         print(f"   • Empleados actualizados: {actualizados}")
-        print(f"   • Empleados desactivados: {desactivados}")
+        print(f"   • Empleados eliminados: {eliminados}")
+        print(f"   • Total activos en BD: {total_filas_excel}")
         print(f"{'='*60}\n")
         
     except Exception as e:
