@@ -8,17 +8,19 @@ from app.sync_excel import sincronizar_excel_completo
 import datetime
 
 def verificar_drive_token():
-    """Verifica el estado del token de Drive cada 5 minutos"""
+    """Verifica y RENUEVA el token de Drive preventivamente"""
     try:
         from app.drive_uploader import get_authenticated_service
         
-        print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 🔍 Verificando token de Drive...")
+        print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 🔄 Renovando token de Drive preventivamente...")
         service = get_authenticated_service()
         
-        # Si llegamos aquí, el token está OK
-        print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] ✅ Token de Drive verificado")
+        # Test rápido: listar 1 archivo para forzar uso del token
+        service.files().list(pageSize=1, fields="files(id)").execute()
+        
+        print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] ✅ Token de Drive renovado y verificado")
     except Exception as e:
-        print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] ⚠️ Error verificando token: {e}")
+        print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] ⚠️ Error renovando token: {e}")
 
 def iniciar_sincronizacion_automatica():
     """

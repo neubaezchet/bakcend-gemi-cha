@@ -93,17 +93,18 @@ def retry_on_error(max_retries=3, delay=2):
     return decorator
 
 # ==================== RENOVACIÓN DE CREDENCIALES ====================
-
 def _get_or_refresh_credentials():
     """
     Obtiene o renueva las credenciales de Google Drive
     - Thread-safe (usa lock)
     - Renovación preventiva (5 minutos antes)
     - Auto-recuperación en caso de error
+    ✅ CORREGIDO: Ahora siempre genera nuevo token si caduca
     """
     
     with _creds_lock:  # ← EVITA RENOVACIONES SIMULTÁNEAS
         creds = None
+        needs_refresh = False
         
         # Validar que tenemos las credenciales necesarias
         if not all([CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN]):
@@ -125,88 +126,93 @@ def _get_or_refresh_credentials():
                         scopes=["https://www.googleapis.com/auth/drive.file"]
                     )
                     
-                    # Verificar si el token necesita renovación
+                    # ✅ VERIFICAR SI NECESITA RENOVACIÓN
                     if creds.expiry:
                         now = datetime.datetime.utcnow()
                         time_until_expiry = (creds.expiry - now).total_seconds()
                         minutes_left = time_until_expiry / 60
                         
                         # Renovar si expira en menos de 5 minutos o ya expiró
-                        if time_until_expiry < 300 or not creds.valid:
+                        if time_until_expiry < 300:
                             if minutes_left < 0:
                                 print(f"⚠️ Token EXPIRADO hace {abs(minutes_left):.1f} minutos")
                             else:
                                 print(f"⏰ Token expira en {minutes_left:.1f} min, renovando preventivamente...")
-                            creds = None  # Forzar renovación
+                            needs_refresh = True
                         else:
                             print(f"✅ Token válido por {minutes_left:.1f} minutos más")
-                            return creds  # Token válido, retornar
+                            return creds  # ✅ Token válido, retornar
+                    else:
+                        # Si no tiene expiry, asumir que está válido
+                        print("✅ Token sin fecha de expiración (válido)")
+                        return creds
+                        
             except Exception as e:
                 print(f"⚠️ Error cargando token del cache: {e}")
-                creds = None
+                needs_refresh = True
+        else:
+            print("📝 No existe cache de token, generando nuevo...")
+            needs_refresh = True
         
-        # PASO 2: Si no hay creds válidas, renovar
-        if not creds:
-            print("🔄 Renovando access_token con refresh_token...")
+        # PASO 2: ✅ RENOVAR O GENERAR NUEVO TOKEN
+        if needs_refresh or not creds:
+            print("🔄 Generando/renovando access_token con refresh_token...")
             
-            # Intentar renovar con refresh_token existente
-            if creds and creds.expired and creds.refresh_token:
-                try:
-                    creds.refresh(Request())
-                    print("✅ Token renovado exitosamente (desde creds expiradas)")
-                except Exception as e:
-                    error_str = str(e)
-                    if 'invalid_grant' in error_str.lower():
-                        raise Exception(
-                            "❌ ERROR CRÍTICO: El REFRESH_TOKEN ha sido revocado.\n\n"
-                            "SOLUCIÓN:\n"
-                            "1. Ejecuta localmente: python regenerar_token.py\n"
-                            "2. Copia el nuevo REFRESH_TOKEN\n"
-                            "3. Actualízalo en Render Dashboard → Environment\n"
-                            "4. Guarda cambios y espera 1-2 minutos\n\n"
-                            f"Detalles técnicos: {error_str}"
-                        )
-                    raise Exception(f"Error renovando token: {error_str}")
-            else:
-                # Crear credenciales desde cero usando REFRESH_TOKEN
-                try:
-                    creds = Credentials(
-                        token=None,
-                        refresh_token=REFRESH_TOKEN,
-                        token_uri="https://oauth2.googleapis.com/token",
-                        client_id=CLIENT_ID,
-                        client_secret=CLIENT_SECRET,
-                        scopes=["https://www.googleapis.com/auth/drive.file"]
+            try:
+                # ✅ SIEMPRE crear credenciales desde REFRESH_TOKEN
+                # Esto funciona tanto si creds existe como si no
+                new_creds = Credentials(
+                    token=None,
+                    refresh_token=REFRESH_TOKEN,
+                    token_uri="https://oauth2.googleapis.com/token",
+                    client_id=CLIENT_ID,
+                    client_secret=CLIENT_SECRET,
+                    scopes=["https://www.googleapis.com/auth/drive.file"]
+                )
+                
+                # Renovar para obtener el access_token
+                new_creds.refresh(Request())
+                
+                print("✅ Token generado/renovado exitosamente")
+                creds = new_creds
+                
+            except Exception as e:
+                error_str = str(e)
+                
+                # ✅ DETECTAR SI EL REFRESH_TOKEN FUE REVOCADO
+                if 'invalid_grant' in error_str.lower():
+                    raise Exception(
+                        "❌ ERROR CRÍTICO: El REFRESH_TOKEN ha sido revocado o es inválido.\n\n"
+                        "SOLUCIÓN:\n"
+                        "1. Ejecuta localmente: python regenerar_token.py\n"
+                        "2. Copia el nuevo REFRESH_TOKEN\n"
+                        "3. Actualízalo en Render Dashboard → Environment → GOOGLE_REFRESH_TOKEN\n"
+                        "4. Guarda cambios y espera 1-2 minutos\n\n"
+                        f"Detalles técnicos: {error_str}"
                     )
-                    creds.refresh(Request())
-                    print("✅ Token generado exitosamente desde REFRESH_TOKEN")
-                except Exception as e:
-                    error_str = str(e)
-                    if 'invalid_grant' in error_str.lower():
-                        raise Exception(
-                            "❌ ERROR CRÍTICO: El REFRESH_TOKEN es inválido o ha sido revocado.\n\n"
-                            "SOLUCIÓN:\n"
-                            "1. Verifica que GOOGLE_REFRESH_TOKEN esté correctamente copiado en Render\n"
-                            "2. Si persiste, ejecuta: python regenerar_token.py\n"
-                            "3. Actualiza el nuevo token en Render Dashboard → Environment\n\n"
-                            f"Detalles técnicos: {error_str}"
-                        )
-                    raise Exception(f"Error creando credenciales: {error_str}")
-            
-            # PASO 3: Guardar token renovado en cache
+                
+                raise Exception(f"Error renovando token: {error_str}")
+        
+        # PASO 3: Guardar token renovado en cache
+        if creds:
             try:
                 token_data = {
                     'token': creds.token,
-                    'refresh_token': creds.refresh_token,
+                    'refresh_token': creds.refresh_token or REFRESH_TOKEN,  # ✅ Preservar refresh_token
                     'token_uri': creds.token_uri,
                     'client_id': creds.client_id,
                     'client_secret': creds.client_secret,
                     'scopes': creds.scopes,
                     'expiry': creds.expiry.isoformat() if creds.expiry else None
                 }
+                
+                TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)  # ✅ Crear directorio si no existe
+                
                 with open(TOKEN_FILE, 'w') as token:
                     json.dump(token_data, token)
-                print("💾 Token renovado guardado en cache")
+                
+                print("💾 Token guardado en cache")
+                
             except Exception as e:
                 print(f"⚠️ No se pudo guardar token en cache: {e}")
                 # No es crítico, podemos continuar

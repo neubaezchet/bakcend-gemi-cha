@@ -561,7 +561,37 @@ async def migrar_excel_a_bd(db: Session = Depends(get_db)):
         }
         
     except Exception as e:
+
         return JSONResponse(status_code=500, content={"error": f"Error: {str(e)}"})
+@app.get("/health/drive-token")
+async def check_drive_token_health():
+    """Verifica el estado del token de Drive"""
+    from app.drive_uploader import TOKEN_FILE
+    import json
+    from datetime import datetime
+    
+    try:
+        if TOKEN_FILE.exists():
+            with open(TOKEN_FILE, 'r') as f:
+                token_data = json.load(f)
+                expiry_str = token_data.get('expiry')
+                
+                if expiry_str:
+                    expiry = datetime.fromisoformat(expiry_str)
+                    now = datetime.utcnow()
+                    remaining = (expiry - now).total_seconds()
+                    
+                    return {
+                        "status": "healthy" if remaining > 0 else "expired",
+                        "expires_in_minutes": round(remaining / 60, 2),
+                        "expires_at": expiry_str,
+                        "last_checked": now.isoformat()
+                    }
+        
+        return {"status": "no_cache", "message": "Token se generará en primera petición"}
+        
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):
