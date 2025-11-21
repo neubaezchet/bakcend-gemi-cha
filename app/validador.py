@@ -708,7 +708,7 @@ async def busqueda_relacional_desde_excel(
     
     resultados_response = await busqueda_relacional(request, db, True)
     
-    historial.resultados_count = resultados_ response["total_encontrados"]
+    historial.resultados_count = resultados_response["total_encontrados"]
     db.commit()
     
     return {
@@ -1329,11 +1329,57 @@ async def crear_adjunto_desde_pdf(
             io.BytesIO(img_data),
             media_type="image/png",
             headers={"Content-Disposition": f"attachment; filename={serial}_adjunto.png"}
-        )
+
+@router.post("/casos/{serial}/guardar-pdf-editado")
+async def guardar_pdf_editado(
+    serial: str,
+    archivo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _: bool = Depends(verificar_token_admin)
+):
+    """
+    Guarda un PDF editado en Drive reemplazando el original
+    """
+    caso = db.query(Case).filter(Case.serial == serial).first()
+    if not caso:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    
+    # Guardar archivo temporal
+    temp_path = os.path.join(tempfile.gettempdir(), f"{serial}_edited.pdf")
+    
+    try:
+        # Guardar archivo subido
+        with open(temp_path, 'wb') as f:
+            shutil.copyfileobj(archivo.file, f)
+        
+        # Actualizar en Drive
+        organizer = CaseFileOrganizer()
+        nuevo_link = organizer.actualizar_pdf_editado(caso, temp_path)
+        
+        if nuevo_link:
+            caso.drive_link = nuevo_link
+            db.commit()
+            
+            # Registrar evento
+            registrar_evento(
+                db, caso.id,
+                "pdf_editado",
+                actor="Validador",
+                motivo="PDF editado con herramientas de anotación"
+            )
+            
+            os.remove(temp_path)
+            
+            return {
+                "status": "ok",
+                "serial": serial,
+                "nuevo_link": nuevo_link,
+                "mensaje": "PDF actualizado exitosamente en Drive"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Error actualizando PDF en Drive")
     
     except Exception as e:
-        if os.path.exists(temp_pdf):
-            os.remove(temp_pdf)
-        if os.path.exists(temp_img):
-            os.remove(temp_img)
-        raise HTTPException(status_code=500, detail=str(e))
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")

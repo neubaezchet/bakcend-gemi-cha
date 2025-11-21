@@ -205,7 +205,7 @@ def send_html_email(to_email: str, subject: str, html_body: str, text_body: str 
         
         send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
             to=[{"email": to_email}],
-            sender={"name": "IncaNeurobaeza", "email": brevo_from_email},
+            sender={"name": "IncaBaeza", "email": brevo_from_email},
             reply_to={"email": reply_to_email},
             subject=subject,
             html_content=html_body,
@@ -261,7 +261,7 @@ def obtener_empleado(cedula: str, db: Session = Depends(get_db)):
         }
     
     # PASO 2: Sincronizar desde Excel
-    print(f"🔄 Sync instantánea para {cedula}...")
+    print(f"📄 Sync instantánea para {cedula}...")
     empleado_sync = sincronizar_empleado_desde_excel(cedula)
     
     if empleado_sync:
@@ -292,12 +292,12 @@ async def subir_incapacidad(
 ):
     """Endpoint de recepción de incapacidades"""
     
-   # ✅ PASO 1: Verificar en BD (búsqueda instantánea)
+    # ✅ PASO 1: Verificar en BD (búsqueda instantánea)
     empleado_bd = db.query(Employee).filter(Employee.cedula == cedula).first()
     
     # ✅ PASO 2: Si NO está en BD, sincronizar desde Excel
     if not empleado_bd:
-        print(f"🔄 Sincronización instantánea para {cedula}...")
+        print(f"📄 Sincronización instantánea para {cedula}...")
         empleado_bd = sincronizar_empleado_desde_excel(cedula)
     
     # ✅ PASO 3: Determinar si el empleado fue encontrado (en BD o Excel)
@@ -312,27 +312,29 @@ async def subir_incapacidad(
                 empleado_encontrado = False
         except:
             empleado_encontrado = False
- # ✅ Generar serial único basado en nombre y cédula
+    
+    # ✅ Generar serial único basado en nombre y cédula
     if empleado_bd:
-      consecutivo = generar_serial_unico(db, empleado_bd.nombre, cedula)
+        consecutivo = generar_serial_unico(db, empleado_bd.nombre, cedula)
     else:
-      # Si no hay empleado, usar iniciales genéricas
-      consecutivo = generar_serial_unico(db, "DESCONOCIDO", cedula)
+        # Si no hay empleado, usar iniciales genéricas
+        consecutivo = generar_serial_unico(db, "DESCONOCIDO", cedula)
     
     # Verificar si hay casos bloqueantes
     if empleado_bd:
-      caso_bloqueante = db.query(Case).filter(
-        Case.employee_id == empleado_bd.id,
-        Case.estado.in_([EstadoCaso.INCOMPLETA, EstadoCaso.ILEGIBLE, EstadoCaso.INCOMPLETA_ILEGIBLE]),
-        Case.bloquea_nueva == True
-      ).first()
-      
-      if caso_bloqueante:
-        return JSONResponse(status_code=409, content={
-          "bloqueo": True,
-          "serial_pendiente": caso_bloqueante.serial,
-          "mensaje": f"Caso pendiente ({caso_bloqueante.serial}) debe completarse primero."
-        })
+        caso_bloqueante = db.query(Case).filter(
+            Case.employee_id == empleado_bd.id,
+            Case.estado.in_([EstadoCaso.INCOMPLETA, EstadoCaso.ILEGIBLE, EstadoCaso.INCOMPLETA_ILEGIBLE]),
+            Case.bloquea_nueva == True
+        ).first()
+        
+        if caso_bloqueante:
+            return JSONResponse(status_code=409, content={
+                "bloqueo": True,
+                "serial_pendiente": caso_bloqueante.serial,
+                "mensaje": f"Caso pendiente ({caso_bloqueante.serial}) debe completarse primero."
+            })
+    
     metadata_form = {}
     tiene_soat = None
     tiene_licencia = None
@@ -437,7 +439,7 @@ IncaNeurobaeza"""
         for email_dest in emails_to_send:
             send_html_email(
                 email_dest, 
-                f"Confirmación Recepción - {consecutivo}",
+                f"CC {cedula} - {consecutivo} - Confirmación - {nombre} - {empresa_reg}",
                 html_empleado,
                 text_empleado
             )
@@ -561,8 +563,8 @@ async def migrar_excel_a_bd(db: Session = Depends(get_db)):
         }
         
     except Exception as e:
-
         return JSONResponse(status_code=500, content={"error": f"Error: {str(e)}"})
+
 @app.get("/health/drive-token")
 async def check_drive_token_health():
     """Verifica el estado del token de Drive"""
