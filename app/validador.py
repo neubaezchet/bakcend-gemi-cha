@@ -1321,6 +1321,15 @@ async def crear_adjunto_desde_pdf(
             io.BytesIO(img_data),
             media_type="image/png",
             headers={"Content-Disposition": f"attachment; filename={serial}_adjunto.png"}
+        )
+    
+    except Exception as e:
+        if os.path.exists(temp_pdf):
+            os.remove(temp_pdf)
+        if os.path.exists(temp_img):
+            os.remove(temp_img)
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
 
 @router.post("/casos/{serial}/guardar-pdf-editado")
 async def guardar_pdf_editado(
@@ -1332,19 +1341,18 @@ async def guardar_pdf_editado(
     """
     Guarda un PDF editado en Drive reemplazando el original
     """
+    import shutil
+    
     caso = db.query(Case).filter(Case.serial == serial).first()
     if not caso:
         raise HTTPException(status_code=404, detail="Caso no encontrado")
     
-    # Guardar archivo temporal
     temp_path = os.path.join(tempfile.gettempdir(), f"{serial}_edited.pdf")
     
     try:
-        # Guardar archivo subido
         with open(temp_path, 'wb') as f:
             shutil.copyfileobj(archivo.file, f)
         
-        # Actualizar en Drive
         organizer = CaseFileOrganizer()
         nuevo_link = organizer.actualizar_pdf_editado(caso, temp_path)
         
@@ -1352,7 +1360,6 @@ async def guardar_pdf_editado(
             caso.drive_link = nuevo_link
             db.commit()
             
-            # Registrar evento
             registrar_evento(
                 db, caso.id,
                 "pdf_editado",
@@ -1374,4 +1381,4 @@ async def guardar_pdf_editado(
     except Exception as e:
         if os.path.exists(temp_path):
             os.remove(temp_path)
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}"))
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
