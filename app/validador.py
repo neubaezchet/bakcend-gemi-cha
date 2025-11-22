@@ -25,6 +25,7 @@ from app.database import (
 from app.checks_disponibles import CHECKS_DISPONIBLES, obtener_checks_por_tipo
 from app.email_templates import get_email_template_universal
 from app.drive_manager import CaseFileOrganizer
+from app.n8n_notifier import enviar_a_n8n  # ✅ NUEVO
 
 router = APIRouter(prefix="/validador", tags=["Portal de Validadores"])
 
@@ -93,68 +94,59 @@ def registrar_evento(db: Session, case_id: int, accion: str, actor: str = "Siste
 
 def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[], caso=None, db=None):
     """
-    Envía email con adjuntos usando Brevo
-    ✅ AHORA CON SISTEMA DE COPIA AUTOMÁTICA desde Excel Pestaña 2
+    ✅ NUEVO: Envía email a través de n8n en lugar de Brevo
     """
-    brevo_api_key = os.environ.get("BREVO_API_KEY")
-    brevo_from_email = os.environ.get("BREVO_FROM_EMAIL", "notificaciones@smtp-brevo.com")
-    reply_to_email = os.environ.get("SMTP_EMAIL", "davidbaezaospino@gmail.com")
+    import base64
     
-    if not brevo_api_key:
-        print("Error: Falta BREVO_API_KEY")
-        return False
+    # Convertir adjuntos a base64
+    adjuntos_base64 = []
+    for path in adjuntos_paths:
+        if os.path.exists(path):
+            with open(path, 'rb') as f:
+                content = base64.b64encode(f.read()).decode('utf-8')
+                adjuntos_base64.append({
+                    'filename': os.path.basename(path),
+                    'content': content,
+                    'mimetype': 'application/octet-stream'
+                })
     
-    try:
-        configuration = sib_api_v3_sdk.Configuration()
-        configuration.api_key['api-key'] = brevo_api_key
-        api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
-        
-        # Procesar adjuntos
-        attachments = []
-        for adjunto_path in adjuntos_paths:
-            if os.path.exists(adjunto_path):
-                with open(adjunto_path, 'rb') as f:
-                    content = base64.b64encode(f.read()).decode()
-                    attachments.append({
-                        'content': content,
-                        'name': os.path.basename(adjunto_path)
-                    })
-        
-        # ✅ OBTENER EMAIL DE COPIA DESDE LA BD (Pestaña 2 del Excel)
-        cc_email = None
-        if caso and caso.empresa and caso.empresa.email_copia:
-            cc_email = caso.empresa.email_copia
-            print(f"📧 Email de copia configurado: {cc_email} ({caso.empresa.nombre})")
-        
-        # ✅ Preparar destinatarios
-        to_list = [{"email": to_email}]
-        cc_list = [{"email": cc_email}] if cc_email else None
-        
-        send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
-            to=to_list,
-            cc=cc_list,  # ✅ COPIA AUTOMÁTICA
-            sender={"name": "IncaBaeza", "email": brevo_from_email},
-            reply_to={"email": reply_to_email},
-            subject=subject,
-            html_content=html_body,
-            attachment=attachments if attachments else None
-        )
-        
-        api_response = api_instance.send_transac_email(send_smtp_email)
-        
-        if cc_email:
-            print(f"✅ Email enviado a {to_email} con COPIA a {cc_email} ({len(attachments)} adjunto(s))")
-        else:
-            print(f"✅ Email enviado a {to_email} ({len(attachments)} adjunto(s))")
-        
-        return True
-    except Exception as e:
-        print(f"❌ Error enviando email: {e}")
-        return False
+    # Determinar tipo de notificación desde el subject
+    tipo_map = {
+        'Confirmación': 'confirmacion',
+        'Incompleta': 'incompleta',
+        'Ilegible': 'ilegible',
+        'Validada': 'completa',
+        'EPS': 'eps',
+        'TTHH': 'tthh',
+        'Extra': 'extra'
+    }
+    
+    tipo_notificacion = 'confirmacion'  # default
+    for key, value in tipo_map.items():
+        if key in subject:
+            tipo_notificacion = value
+            break
+    
+    # Obtener email de copia si existe
+    cc_email = None
+    if caso and caso.empresa and caso.empresa.email_copia:
+        cc_email = caso.empresa.email_copia
+        print(f"📧 Email de copia configurado: {cc_email} ({caso.empresa.nombre})")
+    
+    # Enviar a n8n
+    return enviar_a_n8n(
+        tipo_notificacion=tipo_notificacion,
+        email=to_email,
+        serial=caso.serial if caso else 'N/A',
+        subject=subject,
+        html_content=html_body,
+        cc_email=cc_email,
+        adjuntos_base64=adjuntos_base64
+    )
 
 
 def send_html_email(to_email, subject, html_body, caso=None):
-    """Envía email sin adjuntos (wrapper con soporte para copia)"""
+    """✅ NUEVO: Envía email a través de n8n (wrapper sin adjuntos)"""
     return enviar_email_con_adjuntos(to_email, subject, html_body, [], caso=caso)
 
 def obtener_email_tthh(empresa_nombre):
