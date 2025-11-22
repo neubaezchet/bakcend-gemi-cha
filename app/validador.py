@@ -1374,4 +1374,4 @@ async def guardar_pdf_editado(
     except Exception as e:
         if os.path.exists(temp_path):
             os.remove(temp_path)
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}"))
