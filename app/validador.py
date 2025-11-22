@@ -94,21 +94,30 @@ def registrar_evento(db: Session, case_id: int, accion: str, actor: str = "Siste
 
 def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[], caso=None, db=None):
     """
-    ✅ NUEVO: Envía email a través de n8n en lugar de Brevo
+    ✅ Sistema profesional de envío con copias por empresa
+    
+    Lógica de copias:
+    - TO: Email del empleado (siempre)
+    - CC: Email de la empresa (si está configurado en BD)
+    - BCC: NINGUNO (removido para producción)
     """
     import base64
+    from app.n8n_notifier import enviar_a_n8n
     
     # Convertir adjuntos a base64
     adjuntos_base64 = []
     for path in adjuntos_paths:
         if os.path.exists(path):
-            with open(path, 'rb') as f:
-                content = base64.b64encode(f.read()).decode('utf-8')
-                adjuntos_base64.append({
-                    'filename': os.path.basename(path),
-                    'content': content,
-                    'mimetype': 'application/octet-stream'
-                })
+            try:
+                with open(path, 'rb') as f:
+                    content = base64.b64encode(f.read()).decode('utf-8')
+                    adjuntos_base64.append({
+                        'filename': os.path.basename(path),
+                        'content': content,
+                        'mimetype': 'application/pdf'
+                    })
+            except Exception as e:
+                print(f"⚠️ Error procesando adjunto {path}: {e}")
     
     # Determinar tipo de notificación desde el subject
     tipo_map = {
@@ -118,7 +127,9 @@ def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[], c
         'Validada': 'completa',
         'EPS': 'eps',
         'TTHH': 'tthh',
-        'Extra': 'extra'
+        'Extra': 'extra',
+        'Recordatorio': 'recordatorio',
+        'Seguimiento': 'alerta_jefe'
     }
     
     tipo_notificacion = 'confirmacion'  # default
@@ -127,14 +138,22 @@ def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[], c
             tipo_notificacion = value
             break
     
-    # Obtener email de copia si existe
+    # ✅ SISTEMA DE COPIAS PROFESIONAL
     cc_email = None
-    if caso and caso.empresa and caso.empresa.email_copia:
-        cc_email = caso.empresa.email_copia
-        print(f"📧 Email de copia configurado: {cc_email} ({caso.empresa.nombre})")
+    
+    if caso:
+        # Obtener email de copia de la empresa (desde BD)
+        if hasattr(caso, 'empresa') and caso.empresa:
+            if hasattr(caso.empresa, 'email_copia') and caso.empresa.email_copia:
+                cc_email = caso.empresa.email_copia
+                print(f"📧 CC configurado: {cc_email} ({caso.empresa.nombre})")
+            else:
+                print(f"ℹ️ Empresa {caso.empresa.nombre} sin email de copia configurado")
+        else:
+            print(f"⚠️ Caso {caso.serial} sin empresa asociada")
     
     # Enviar a n8n
-    return enviar_a_n8n(
+    resultado = enviar_a_n8n(
         tipo_notificacion=tipo_notificacion,
         email=to_email,
         serial=caso.serial if caso else 'N/A',
@@ -143,6 +162,13 @@ def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[], c
         cc_email=cc_email,
         adjuntos_base64=adjuntos_base64
     )
+    
+    if resultado:
+        print(f"✅ Email enviado: {to_email} (CC: {cc_email or 'ninguno'})")
+    else:
+        print(f"❌ Error enviando email a {to_email}")
+    
+    return resultado
 
 
 def send_html_email(to_email, subject, html_body, caso=None):
