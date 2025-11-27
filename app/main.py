@@ -20,8 +20,7 @@ from app.validador import router as validador_router
 from app.sync_excel import sincronizar_empleado_desde_excel  # ✅ NUEVO
 from app.serial_generator import generar_serial_unico  # ✅ NUEVO
 
-import sib_api_v3_sdk
-from sib_api_v3_sdk.rest import ApiException
+from app.n8n_notifier import enviar_a_n8n
 
 app = FastAPI(title="IncaNeurobaeza API", version="2.0.0")
 
@@ -185,7 +184,35 @@ def get_current_quinzena():
     return f"primera quincena de {mes_nombre}" if today.day <= 15 else f"segunda quincena de {mes_nombre}"
 
 def send_html_email(to_email: str, subject: str, html_body: str, text_body: str = None):
-    brevo_api_key = os.environ.get("BREVO_API_KEY")
+    """Envía email a través de N8N"""
+    tipo_map = {
+        'Confirmación': 'confirmacion',
+        'Copia': 'confirmacion',
+        'ALERTA': 'extra'
+    }
+    
+    tipo_notificacion = 'confirmacion'
+    for key, value in tipo_map.items():
+        if key in subject:
+            tipo_notificacion = value
+            break
+    
+    resultado = enviar_a_n8n(
+        tipo_notificacion=tipo_notificacion,
+        email=to_email,
+        serial='AUTO',
+        subject=subject,
+        html_content=html_body,
+        cc_email=None,
+        adjuntos_base64=[]
+    )
+    
+    if resultado:
+        print(f"✅ Email enviado via N8N: {to_email}")
+        return True, None
+    else:
+        print(f"❌ Error enviando via N8N")
+        return False, "Error N8N"
     brevo_from_email = os.environ.get("BREVO_FROM_EMAIL", "notificaciones@smtp-brevo.com")
     reply_to_email = os.environ.get("SMTP_EMAIL", "davidbaezaospino@gmail.com")
 

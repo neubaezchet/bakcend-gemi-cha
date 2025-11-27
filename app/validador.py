@@ -95,6 +95,72 @@ def registrar_evento(db: Session, case_id: int, accion: str, actor: str = "Siste
 def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[], caso=None, db=None):
     """
     ✅ Sistema profesional de envío con copias por empresa
+    """
+    import base64
+    from app.n8n_notifier import enviar_a_n8n
+    
+    # Convertir adjuntos a base64
+    adjuntos_base64 = []
+    for path in adjuntos_paths:
+        if os.path.exists(path):
+            try:
+                with open(path, 'rb') as f:
+                    content = base64.b64encode(f.read()).decode('utf-8')
+                    adjuntos_base64.append({
+                        'filename': os.path.basename(path),
+                        'content': content,
+                        'mimetype': 'application/pdf'
+                    })
+            except Exception as e:
+                print(f"⚠️ Error procesando adjunto {path}: {e}")
+    
+    # Determinar tipo de notificación desde el subject
+    tipo_map = {
+        'Confirmación': 'confirmacion',
+        'Incompleta': 'incompleta',
+        'Ilegible': 'ilegible',
+        'Validada': 'completa',
+        'EPS': 'eps',
+        'TTHH': 'tthh',
+        'Extra': 'extra',
+        'Recordatorio': 'recordatorio',
+        'Seguimiento': 'alerta_jefe'
+    }
+    
+    tipo_notificacion = 'confirmacion'  # default
+    for key, value in tipo_map.items():
+        if key in subject:
+            tipo_notificacion = value
+            break
+    
+    # ✅ SISTEMA DE COPIAS PROFESIONAL
+    cc_email = None
+    
+    if caso:
+        if hasattr(caso, 'empresa') and caso.empresa:
+            if hasattr(caso.empresa, 'email_copia') and caso.empresa.email_copia:
+                cc_email = caso.empresa.email_copia
+                print(f"📧 CC configurado: {cc_email} ({caso.empresa.nombre})")
+    
+    # Enviar a n8n
+    resultado = enviar_a_n8n(
+        tipo_notificacion=tipo_notificacion,
+        email=to_email,
+        serial=caso.serial if caso else 'N/A',
+        subject=subject,
+        html_content=html_body,
+        cc_email=cc_email,
+        adjuntos_base64=adjuntos_base64 if adjuntos_base64 else []
+    )
+    
+    return resultado
+
+
+def send_html_email(to_email, subject, html_body, caso=None):
+    """✅ Wrapper sin adjuntos"""
+    return enviar_email_con_adjuntos(to_email, subject, html_body, [], caso=caso)
+    """
+    ✅ Sistema profesional de envío con copias por empresa
     
     Lógica de copias:
     - TO: Email del empleado (siempre)

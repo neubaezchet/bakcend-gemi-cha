@@ -9,12 +9,37 @@ from app.database import SessionLocal, Case, EstadoCaso
 from app.ia_redactor import redactar_recordatorio_7dias, redactar_alerta_jefe_7dias
 from app.email_templates import get_email_template_universal
 import os
-import sib_api_v3_sdk
-from sib_api_v3_sdk.rest import ApiException
+from app.n8n_notifier import enviar_a_n8n
 
 def send_html_email(to_email: str, subject: str, html_body: str) -> bool:
-    """Envía email usando Brevo"""
-    brevo_api_key = os.environ.get("BREVO_API_KEY")
+    """Envía email usando N8N"""
+    tipo_map = {
+        'Recordatorio': 'recordatorio',
+        'Seguimiento': 'alerta_jefe'
+    }
+    
+    tipo_notificacion = 'recordatorio'
+    for key, value in tipo_map.items():
+        if key in subject:
+            tipo_notificacion = value
+            break
+    
+    resultado = enviar_a_n8n(
+        tipo_notificacion=tipo_notificacion,
+        email=to_email,
+        serial='AUTO',
+        subject=subject,
+        html_content=html_body,
+        cc_email=None,
+        adjuntos_base64=[]
+    )
+    
+    if resultado:
+        print(f"✅ Email enviado a {to_email}")
+        return True
+    
+    print(f"❌ Error enviando email")
+    return False
     brevo_from_email = os.environ.get("BREVO_FROM_EMAIL", "notificaciones@smtp-brevo.com")
     reply_to_email = os.environ.get("SMTP_EMAIL", "davidbaezaospino@gmail.com")
 
