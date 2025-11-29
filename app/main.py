@@ -183,12 +183,17 @@ def get_current_quinzena():
     mes_nombre = calendar.month_name[today.month]
     return f"primera quincena de {mes_nombre}" if today.day <= 15 else f"segunda quincena de {mes_nombre}"
 
-def send_html_email(to_email: str, subject: str, html_body: str, text_body: str = None):
-    """Envía email a través de N8N"""
+def send_html_email(to_email: str, subject: str, html_body: str, caso=None):
+    """Envía email a través de N8N con soporte para copias"""
     tipo_map = {
         'Confirmación': 'confirmacion',
         'Copia': 'confirmacion',
-        'ALERTA': 'extra'
+        'ALERTA': 'extra',
+        'Incompleta': 'incompleta',
+        'Ilegible': 'ilegible',
+        'Validada': 'completa',
+        'EPS': 'eps',
+        'TTHH': 'tthh'
     }
     
     tipo_notificacion = 'confirmacion'
@@ -197,18 +202,26 @@ def send_html_email(to_email: str, subject: str, html_body: str, text_body: str 
             tipo_notificacion = value
             break
     
+    # ✅ OBTENER EMAIL DE COPIA DE LA EMPRESA
+    cc_email = None
+    if caso:
+        if hasattr(caso, 'empresa') and caso.empresa:
+            if hasattr(caso.empresa, 'email_copia') and caso.empresa.email_copia:
+                cc_email = caso.empresa.email_copia
+                print(f"📧 CC configurado: {cc_email} ({caso.empresa.nombre})")
+    
     resultado = enviar_a_n8n(
         tipo_notificacion=tipo_notificacion,
         email=to_email,
-        serial='AUTO',
+        serial=caso.serial if caso else 'AUTO',
         subject=subject,
         html_content=html_body,
-        cc_email=None,
+        cc_email=cc_email,
         adjuntos_base64=[]
     )
     
     if resultado:
-        print(f"✅ Email enviado via N8N: {to_email}")
+        print(f"✅ Email enviado via N8N: {to_email} (CC: {cc_email or 'ninguno'})")
         return True, None
     else:
         print(f"❌ Error enviando via N8N")
@@ -436,41 +449,57 @@ async def subir_incapacidad(
         correo_empleado = empleado_bd.correo
         empresa_reg = empleado_bd.empresa.nombre if empleado_bd.empresa else "No especificada"
         
+        # ✅ OBTENER EMAIL DE COPIA DE LA EMPRESA
+        cc_empresa = None
+        if empleado_bd.empresa and empleado_bd.empresa.email_copia:
+            cc_empresa = empleado_bd.empresa.email_copia
+        
         html_empleado = get_confirmation_template(
             nombre=nombre,
-            consecutivo=consecutivo,
+            serial=consecutivo,
             empresa=empresa_reg,
-            quinzena=quinzena_actual,
-            link_pdf=link_pdf,
-            archivos_nombres=original_filenames,
-            email_contacto=email,
-            telefono=telefono
+            tipo_incapacidad=tipo_bd.value if tipo_bd else 'General',
+            telefono=telefono,
+            email=email,
+            link_drive=link_pdf,
+            archivos_nombres=original_filenames
         )
         
-        text_empleado = f"""Buen día {nombre},
+        # ✅ ASUNTO DEL EMAIL (formato correcto)
+        asunto = f"CC {cedula} - {consecutivo} - Confirmación - {nombre} - {empresa_reg}"
         
-Confirmo recibido de la documentación.
-Consecutivo: {consecutivo}
-Empresa: {empresa_reg}
-Link: {link_pdf}
-
---
-IncaNeurobaeza"""
+        # ✅ ENVIAR VIA N8N con COPIAS
+        from app.n8n_notifier import enviar_a_n8n
         
-        emails_to_send = []
+        emails_enviados = []
         if correo_empleado:
-            emails_to_send.append(correo_empleado)
-        if email and email.lower() != correo_empleado.lower():
-            emails_to_send.append(email)
-        
-        for email_dest in emails_to_send:
-            send_html_email(
-                email_dest, 
-                f"CC {cedula} - {consecutivo} - Confirmación - {nombre} - {empresa_reg}",
-                html_empleado,
-                text_empleado
+            resultado = enviar_a_n8n(
+                tipo_notificacion='confirmacion',
+                email=correo_empleado,
+                serial=consecutivo,
+                subject=asunto,
+                html_content=html_empleado,
+                cc_email=cc_empresa,
+                adjuntos_base64=[]
             )
+            if resultado:
+                emails_enviados.append(correo_empleado)
         
+        # Si el email del formulario es diferente, enviarlo también
+        if email and email.lower() != (correo_empleado or '').lower():
+            resultado = enviar_a_n8n(
+                tipo_notificacion='confirmacion',
+                email=email,
+                serial=consecutivo,
+                subject=asunto,
+                html_content=html_empleado,
+                cc_email=cc_empresa,
+                adjuntos_base64=[]
+            )
+            if resultado:
+                emails_enviados.append(email)
+        
+        # ✅ EMAIL DE SUPERVISIÓN (SIN CC, directo)
         html_supervision = get_alert_template(
             tipo="copia",
             cedula=cedula,
@@ -483,10 +512,14 @@ IncaNeurobaeza"""
             telefono=telefono
         )
         
-        send_html_email(
-            "xoblaxbaezaospino@gmail.com", 
-            f"Copia Registro - {consecutivo} - {empresa_reg}",
-            html_supervision
+        enviar_a_n8n(
+            tipo_notificacion='extra',
+            email="xoblaxbaezaospino@gmail.com",
+            serial=consecutivo,
+            subject=f"Copia Registro - {consecutivo} - {empresa_reg}",
+            html_content=html_supervision,
+            cc_email=None,
+            adjuntos_base64=[]
         )
         
         return {
@@ -527,8 +560,25 @@ IncaNeurobaeza"""
         </div>
         """
         
-        send_html_email(email, f"Confirmación - {consecutivo}", html_confirmacion)
-        send_html_email("xoblaxbaezaospino@gmail.com", f"⚠️ ALERTA Cédula no encontrada - {consecutivo}", html_alerta)
+        enviar_a_n8n(
+            tipo_notificacion='confirmacion',
+            email=email,
+            serial=consecutivo,
+            subject=f"Confirmación - {consecutivo}",
+            html_content=html_confirmacion,
+            cc_email=None,
+            adjuntos_base64=[]
+        )
+        
+        enviar_a_n8n(
+            tipo_notificacion='extra',
+            email="xoblaxbaezaospino@gmail.com",
+            serial=consecutivo,
+            subject=f"⚠️ ALERTA Cédula no encontrada - {consecutivo}",
+            html_content=html_alerta,
+            cc_email=None,
+            adjuntos_base64=[]
+        )
         
         return {
             "status": "warning",

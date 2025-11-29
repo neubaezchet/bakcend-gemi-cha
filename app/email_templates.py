@@ -842,3 +842,188 @@ def get_email_template_universal(tipo_email, nombre, serial, empresa, tipo_incap
         telefono, email, link_drive, checks_seleccionados,
         archivos_nombres, quinzena, contenido_ia, empleado_nombre
     )
+
+def get_confirmation_template(nombre, serial, empresa, tipo_incapacidad, telefono, email, link_drive, archivos_nombres=None):
+    """
+    ✅ TEMPLATE DE CONFIRMACIÓN MODERNO - ESTILO MICROSOFT 365
+    Vibrante, curvo, con gradientes y CTAs claros
+    """
+    
+    # Lista de archivos recibidos
+    archivos_html = ""
+    if archivos_nombres:
+        archivos_html = "<ul style='list-style: none; padding: 0; margin: 15px 0;'>"
+        for archivo in archivos_nombres:
+            archivos_html += f"""
+                <li style='background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%); 
+                           padding: 12px 16px; margin: 8px 0; border-radius: 12px; 
+                           display: flex; align-items: center; gap: 10px;'>
+                    <span style='font-size: 20px;'>📄</span>
+                    <span style='color: #0369a1; font-weight: 500; font-size: 14px;'>{archivo}</span>
+                </li>
+            """
+        archivos_html += "</ul>"
+    
+    return f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Confirmación - {serial}</title>
+    </head>
+    <body style="margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh;">
+        
+        <!-- Container Principal -->
+        <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+            
+            <!-- Card Principal con sombra suave -->
+            <div style="background: white; border-radius: 24px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.15);">
+                
+                <!-- Header con gradiente vibrante -->
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center; position: relative;">
+                    <!-- Icono flotante -->
+                    <div style="background: white; width: 80px; height: 80px; border-radius: 50%; 
+                               margin: 0 auto 20px; display: flex; align-items: center; justify-content: center;
+                               box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+                        <span style="font-size: 40px;">✅</span>
+                    </div>
+                    <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
+                        ¡Recibido Confirmado!
+                    </h1>
+                    <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 16px;">
+                        IncaNeurobaeza
+                    </p>
+                </div>
+                
+                <!-- Contenido -->
+                <div style="padding: 40px 30px;">
+                    
+                    <!-- Saludo personalizado -->
+                    <p style="font-size: 18px; color: #1e293b; margin: 0 0 24px; font-weight: 600;">
+                        Hola <span style="color: #667eea;">{nombre}</span> 👋
+                    </p>
+                    
+                    <!-- Mensaje principal con icono -->
+                    <div style="background: linear-gradient(135deg, #dbeafe 0%, #e0f2fe 100%); 
+                               border-left: 4px solid #3b82f6; padding: 20px; border-radius: 12px; margin: 24px 0;">
+                        <p style="margin: 0; color: #1e40af; font-size: 15px; line-height: 1.6;">
+                            <strong>✓ Confirmo recibido de la documentación</strong><br>
+                            Se procederá a realizar la revisión para validar que cumpla con los requisitos establecidos 
+                            para <strong>{tipo_incapacidad}</strong>.
+                        </p>
+                    </div>
+                    
+                    <!-- Detalles del caso -->
+                    <div style="background: #f8fafc; border-radius: 16px; padding: 24px; margin: 24px 0;">
+                        <h3 style="margin: 0 0 16px; color: #0f172a; font-size: 16px; font-weight: 600;">
+                            📋 Información del Registro
+                        </h3>
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <tr>
+                                <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Serial:</td>
+                                <td style="padding: 8px 0; color: #0f172a; font-weight: 600; font-size: 14px;">
+                                    <span style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); 
+                                                 padding: 4px 12px; border-radius: 8px; color: #92400e;">
+                                        {serial}
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Empresa:</td>
+                                <td style="padding: 8px 0; color: #0f172a; font-weight: 500; font-size: 14px;">{empresa}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Tipo:</td>
+                                <td style="padding: 8px 0; color: #0f172a; font-weight: 500; font-size: 14px;">{tipo_incapacidad}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    
+                    <!-- Documentos recibidos -->
+                    {f'''
+                    <div style="margin: 24px 0;">
+                        <h3 style="margin: 0 0 12px; color: #0f172a; font-size: 16px; font-weight: 600;">
+                            📎 Documentos Recibidos
+                        </h3>
+                        {archivos_html}
+                    </div>
+                    ''' if archivos_html else ''}
+                    
+                    <!-- Botón CTA principal -->
+                    <div style="text-align: center; margin: 32px 0;">
+                        <a href="{link_drive}" 
+                           style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                                  color: white; padding: 16px 40px; text-decoration: none; border-radius: 50px; 
+                                  font-weight: 600; font-size: 16px; box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+                                  transition: transform 0.2s;">
+                            📄 Ver Documentos en Drive
+                        </a>
+                    </div>
+                    
+                    <!-- Botón de llamada directa -->
+                    <div style="text-align: center; margin: 20px 0;">
+                        <a href="tel:{telefono}" 
+                           style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); 
+                                  color: white; padding: 14px 32px; text-decoration: none; border-radius: 50px; 
+                                  font-weight: 600; font-size: 15px; box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3);">
+                            📞 Llamar Ahora
+                        </a>
+                    </div>
+                    
+                    <!-- Alerta de seguimiento -->
+                    <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); 
+                               border-radius: 16px; padding: 20px; margin: 24px 0; border: 2px solid #fbbf24;">
+                        <div style="display: flex; align-items: start; gap: 12px;">
+                            <span style="font-size: 24px;">⚠️</span>
+                            <div>
+                                <p style="margin: 0; color: #92400e; font-weight: 600; font-size: 15px;">
+                                    IMPORTANTE: Estar pendiente
+                                </p>
+                                <p style="margin: 8px 0 0; color: #78350f; font-size: 14px; line-height: 1.5;">
+                                    <strong>📱 Primero vía WhatsApp</strong> y luego por <strong>📧 correo electrónico</strong>
+                                    para seguir en el proceso de radicación o para notificación de correcciones necesarias.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Información de contacto -->
+                    <div style="background: #f1f5f9; border-radius: 12px; padding: 20px; margin: 24px 0;">
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 20px;">📞</span>
+                                <span style="color: #475569; font-size: 14px; font-weight: 500;">{telefono}</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 20px;">📧</span>
+                                <span style="color: #475569; font-size: 14px; font-weight: 500;">{email}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                </div>
+                
+                <!-- Footer -->
+                <div style="background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); 
+                           padding: 30px; text-align: center; border-top: 1px solid #cbd5e1;">
+                    <div style="margin-bottom: 12px;">
+                        <strong style="color: #667eea; font-size: 18px; letter-spacing: -0.5px;">
+                            IncaNeurobaeza
+                        </strong>
+                    </div>
+                    <p style="color: #64748b; font-style: italic; margin: 0; font-size: 14px;">
+                        "Trabajando para ayudarte"
+                    </p>
+                    <p style="color: #94a3b8; margin: 16px 0 0; font-size: 12px;">
+                        © 2024 IncaNeurobaeza. Sistema de gestión de incapacidades.
+                    </p>
+                </div>
+                
+            </div>
+            
+        </div>
+        
+    </body>
+    </html>
+    """

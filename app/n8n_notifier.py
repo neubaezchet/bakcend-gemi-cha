@@ -38,14 +38,15 @@ def enviar_a_n8n(
         bool: True si se envió correctamente
     """
     
+    # ✅ PAYLOAD CORRECTO para n8n
     payload = {
         "tipo_notificacion": tipo_notificacion,
         "email": email,
         "serial": serial,
         "subject": subject,
         "html_content": html_content,
-        "cc_email": cc_email,
-        "adjuntos": adjuntos_base64 or []
+        "cc_email": cc_email if cc_email else "",  # ✅ String vacío si es None
+        "adjuntos": adjuntos_base64 if adjuntos_base64 else []
     }
     
     try:
