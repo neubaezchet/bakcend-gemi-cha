@@ -18,7 +18,8 @@ def enviar_a_n8n(
     serial: str, 
     subject: str,
     html_content: str, 
-    cc_email: Optional[str] = None, 
+    cc_email: Optional[str] = None,
+    correo_bd: Optional[str] = None,
     adjuntos_base64: Optional[List[dict]] = None
 ) -> bool:
     """
@@ -27,16 +28,30 @@ def enviar_a_n8n(
     Args:
         tipo_notificacion: 'confirmacion', 'incompleta', 'ilegible', 'completa', 
                           'eps', 'tthh', 'extra', 'recordatorio', 'alerta_jefe'
-        email: Email del destinatario principal
+        email: Email del destinatario principal (del formulario)
         serial: Serial del caso
         subject: Asunto del email
         html_content: HTML del email generado
-        cc_email: Email de copia (empresa)
+        cc_email: Email de copia de la empresa (Hoja 2)
+        correo_bd: Email del empleado en BD (Hoja 1)
         adjuntos_base64: Lista de adjuntos en base64
     
     Returns:
         bool: True si se envió correctamente
     """
+    
+    # ✅ CONSTRUIR LISTA DE CCs
+    cc_list = []
+    
+    # Agregar correo del empleado en BD (si existe y es diferente al principal)
+    if correo_bd and correo_bd.strip() and correo_bd.lower() != email.lower():
+        cc_list.append(correo_bd.strip())
+    
+    # Agregar correo de la empresa (si existe)
+    if cc_email and cc_email.strip():
+        # Evitar duplicados
+        if cc_email.strip().lower() not in [c.lower() for c in cc_list]:
+            cc_list.append(cc_email.strip())
     
     # ✅ PAYLOAD CORRECTO para n8n
     payload = {
@@ -45,12 +60,16 @@ def enviar_a_n8n(
         "serial": serial,
         "subject": subject,
         "html_content": html_content,
-        "cc_email": cc_email if cc_email else "",  # ✅ String vacío si es None
+        "cc_email": ",".join(cc_list) if cc_list else "",
         "adjuntos": adjuntos_base64 if adjuntos_base64 else []
     }
     
     try:
-        print(f"📤 Enviando a n8n: {tipo_notificacion} - {serial} - {email}")
+        print(f"📤 Enviando a n8n:")
+        print(f"   TO: {email}")
+        print(f"   CC: {', '.join(cc_list) if cc_list else 'ninguno'}")
+        print(f"   Serial: {serial}")
+        print(f"   Subject: {subject}")
         
         response = requests.post(
             N8N_WEBHOOK_URL,

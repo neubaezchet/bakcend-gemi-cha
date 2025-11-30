@@ -11,7 +11,7 @@ from app.email_templates import get_email_template_universal
 import os
 from app.n8n_notifier import enviar_a_n8n
 
-def send_html_email(to_email: str, subject: str, html_body: str) -> bool:
+def send_html_email(to_email: str, subject: str, html_body: str, caso=None) -> bool:
     """Envía email usando N8N"""
     tipo_map = {
         'Recordatorio': 'recordatorio',
@@ -24,13 +24,19 @@ def send_html_email(to_email: str, subject: str, html_body: str) -> bool:
             tipo_notificacion = value
             break
     
+    # Obtener correo BD si hay caso
+    correo_bd = None
+    if caso and hasattr(caso, 'empleado') and caso.empleado:
+        correo_bd = caso.empleado.correo
+    
     resultado = enviar_a_n8n(
         tipo_notificacion=tipo_notificacion,
         email=to_email,
-        serial='AUTO',
+        serial=caso.serial if caso else 'AUTO',
         subject=subject,
         html_content=html_body,
         cc_email=None,
+        correo_bd=correo_bd,
         adjuntos_base64=[]
     )
     
@@ -150,8 +156,9 @@ def verificar_casos_pendientes():
                     # Enviar
                     if send_html_email(
                         caso.email_form,
-                        f"⏰ Recordatorio - {caso.serial}",
-                        html_email
+                        f"Incapacidad {caso.serial} - {empleado.nombre} - {caso.empresa.nombre if caso.empresa else 'N/A'}",
+                        html_email,
+                        caso=caso
                     ):
                         recordatorios_enviados += 1
                         print(f"   ✅ Recordatorio enviado a empleada")
@@ -187,8 +194,9 @@ def verificar_casos_pendientes():
                     # Enviar
                     if send_html_email(
                         empleado.jefe_email,
-                        f"📊 Seguimiento - Incapacidad pendiente {caso.serial}",
-                        html_jefe
+                        f"📊 Seguimiento - Incapacidad {caso.serial} - {empleado.nombre} - {caso.empresa.nombre if caso.empresa else 'N/A'}",
+                        html_jefe,
+                        caso=None  # No agregar CCs al jefe
                     ):
                         alertas_jefe_enviadas += 1
                         print(f"   ✅ Alerta enviada a jefe")

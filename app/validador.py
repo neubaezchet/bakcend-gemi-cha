@@ -94,7 +94,7 @@ def registrar_evento(db: Session, case_id: int, accion: str, actor: str = "Siste
 
 def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[], caso=None, db=None):
     """
-    ✅ Sistema profesional de envío con copias por empresa
+    ✅ Sistema profesional de envío con copias por empresa Y empleado
     """
     import base64
     from app.n8n_notifier import enviar_a_n8n
@@ -133,14 +133,22 @@ def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[], c
             tipo_notificacion = value
             break
     
-    # ✅ SISTEMA DE COPIAS PROFESIONAL
-    cc_email = None
+    # ✅ OBTENER EMAILS DE COPIA
+    cc_empresa = None
+    correo_bd = None
     
     if caso:
+        # Email de copia de la empresa (Hoja 2)
         if hasattr(caso, 'empresa') and caso.empresa:
             if hasattr(caso.empresa, 'email_copia') and caso.empresa.email_copia:
-                cc_email = caso.empresa.email_copia
-                print(f"📧 CC configurado: {cc_email} ({caso.empresa.nombre})")
+                cc_empresa = caso.empresa.email_copia
+                print(f"📧 CC empresa: {cc_empresa} ({caso.empresa.nombre})")
+        
+        # Email del empleado en BD (Hoja 1)
+        if hasattr(caso, 'empleado') and caso.empleado:
+            if hasattr(caso.empleado, 'correo') and caso.empleado.correo:
+                correo_bd = caso.empleado.correo
+                print(f"📧 CC empleado BD: {correo_bd}")
     
     # Enviar a n8n
     resultado = enviar_a_n8n(
@@ -149,7 +157,8 @@ def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[], c
         serial=caso.serial if caso else 'N/A',
         subject=subject,
         html_content=html_body,
-        cc_email=cc_email,
+        cc_email=cc_empresa,
+        correo_bd=correo_bd,
         adjuntos_base64=adjuntos_base64 if adjuntos_base64 else []
     )
     
@@ -230,9 +239,9 @@ def send_html_email(to_email, subject, html_body, caso=None):
     )
     
     if resultado:
-        print(f"✅ Email enviado: {to_email} (CC: {cc_email or 'ninguno'})")
+        print(f"✅ Email enviado: TO={to_email}, CC_EMPRESA={cc_empresa or 'N/A'}, CC_BD={correo_bd or 'N/A'}")
     else:
-        print(f"❌ Error enviando email a {to_email}")
+        print(f"❌ Error enviando email")
     
     return resultado
 

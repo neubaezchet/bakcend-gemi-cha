@@ -465,28 +465,14 @@ async def subir_incapacidad(
             archivos_nombres=original_filenames
         )
         
-        # ✅ ASUNTO DEL EMAIL (formato correcto)
-        asunto = f"CC {cedula} - {consecutivo} - Confirmación - {nombre} - {empresa_reg}"
+        # ✅ ASUNTO DEL EMAIL (formato consistente para hilos)
+        asunto = f"Incapacidad {consecutivo} - {nombre} - {empresa_reg}"
         
         # ✅ ENVIAR VIA N8N con COPIAS
         from app.n8n_notifier import enviar_a_n8n
         
         emails_enviados = []
-        if correo_empleado:
-            resultado = enviar_a_n8n(
-                tipo_notificacion='confirmacion',
-                email=correo_empleado,
-                serial=consecutivo,
-                subject=asunto,
-                html_content=html_empleado,
-                cc_email=cc_empresa,
-                adjuntos_base64=[]
-            )
-            if resultado:
-                emails_enviados.append(correo_empleado)
-        
-        # Si el email del formulario es diferente, enviarlo también
-        if email and email.lower() != (correo_empleado or '').lower():
+        if email:  # Email del formulario como TO principal
             resultado = enviar_a_n8n(
                 tipo_notificacion='confirmacion',
                 email=email,
@@ -494,10 +480,13 @@ async def subir_incapacidad(
                 subject=asunto,
                 html_content=html_empleado,
                 cc_email=cc_empresa,
+                correo_bd=correo_empleado,
                 adjuntos_base64=[]
             )
             if resultado:
-                emails_enviados.append(email)
+                emails_enviados.append(correo_empleado)
+        
+        
         
         # ✅ EMAIL DE SUPERVISIÓN (SIN CC, directo)
         html_supervision = get_alert_template(
@@ -519,6 +508,7 @@ async def subir_incapacidad(
             subject=f"Copia Registro - {consecutivo} - {empresa_reg}",
             html_content=html_supervision,
             cc_email=None,
+            correo_bd=None,
             adjuntos_base64=[]
         )
         
@@ -564,9 +554,10 @@ async def subir_incapacidad(
             tipo_notificacion='confirmacion',
             email=email,
             serial=consecutivo,
-            subject=f"Confirmación - {consecutivo}",
+            subject=f"Incapacidad {consecutivo} - Desconocido - Pendiente",
             html_content=html_confirmacion,
             cc_email=None,
+            correo_bd=None,
             adjuntos_base64=[]
         )
         
@@ -577,6 +568,7 @@ async def subir_incapacidad(
             subject=f"⚠️ ALERTA Cédula no encontrada - {consecutivo}",
             html_content=html_alerta,
             cc_email=None,
+            correo_bd=None,
             adjuntos_base64=[]
         )
         
