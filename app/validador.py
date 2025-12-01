@@ -137,18 +137,55 @@ def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[], c
     cc_empresa = None
     correo_bd = None
     
+    print(f"🔍 DEBUG enviar_email_con_adjuntos:")
+    print(f"   to_email: {to_email}")
+    print(f"   caso: {caso}")
+    
     if caso:
+        print(f"   ✓ Caso existe")
+        
         # Email de copia de la empresa (Hoja 2)
-        if hasattr(caso, 'empresa') and caso.empresa:
-            if hasattr(caso.empresa, 'email_copia') and caso.empresa.email_copia:
-                cc_empresa = caso.empresa.email_copia
-                print(f"📧 CC empresa: {cc_empresa} ({caso.empresa.nombre})")
+        if hasattr(caso, 'empresa'):
+            print(f"   ✓ caso.empresa existe: {caso.empresa}")
+            if caso.empresa:
+                print(f"     empresa.nombre: {caso.empresa.nombre}")
+                if hasattr(caso.empresa, 'email_copia'):
+                    print(f"     ✓ empresa.email_copia existe: {caso.empresa.email_copia}")
+                    if caso.empresa.email_copia:
+                        cc_empresa = caso.empresa.email_copia
+                        print(f"     ✅ CC empresa configurado: {cc_empresa}")
+                    else:
+                        print(f"     ✗ empresa.email_copia es None o vacío")
+                else:
+                    print(f"     ✗ empresa NO tiene atributo email_copia")
+            else:
+                print(f"   ✗ caso.empresa es None")
+        else:
+            print(f"   ✗ caso NO tiene atributo empresa")
         
         # Email del empleado en BD (Hoja 1)
-        if hasattr(caso, 'empleado') and caso.empleado:
-            if hasattr(caso.empleado, 'correo') and caso.empleado.correo:
-                correo_bd = caso.empleado.correo
-                print(f"📧 CC empleado BD: {correo_bd}")
+        if hasattr(caso, 'empleado'):
+            print(f"   ✓ caso.empleado existe: {caso.empleado}")
+            if caso.empleado:
+                print(f"     empleado.nombre: {caso.empleado.nombre}")
+                if hasattr(caso.empleado, 'correo'):
+                    print(f"     ✓ empleado.correo existe: {caso.empleado.correo}")
+                    if caso.empleado.correo:
+                        correo_bd = caso.empleado.correo
+                        print(f"     ✅ CC empleado BD configurado: {correo_bd}")
+                    else:
+                        print(f"     ✗ empleado.correo es None o vacío")
+                else:
+                    print(f"     ✗ empleado NO tiene atributo correo")
+            else:
+                print(f"   ✗ caso.empleado es None")
+        else:
+            print(f"   ✗ caso NO tiene atributo empleado")
+    else:
+        print(f"   ✗ Caso es None")
+    
+    print(f"   📧 cc_empresa final: {cc_empresa}")
+    print(f"   📧 correo_bd final: {correo_bd}")
     
     # Enviar a n8n
     resultado = enviar_a_n8n(

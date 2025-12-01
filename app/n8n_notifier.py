@@ -43,15 +43,43 @@ def enviar_a_n8n(
     # ✅ CONSTRUIR LISTA DE CCs
     cc_list = []
     
+    print(f"🔍 DEBUG n8n_notifier:")
+    print(f"   email (TO): {email}")
+    print(f"   correo_bd: {correo_bd}")
+    print(f"   cc_email: {cc_email}")
+    
     # Agregar correo del empleado en BD (si existe y es diferente al principal)
-    if correo_bd and correo_bd.strip() and correo_bd.lower() != email.lower():
-        cc_list.append(correo_bd.strip())
+    if correo_bd:
+        print(f"   ✓ correo_bd existe: {correo_bd}")
+        if correo_bd.strip():
+            print(f"   ✓ correo_bd no está vacío")
+            if correo_bd.lower() != email.lower():
+                cc_list.append(correo_bd.strip())
+                print(f"   ✓ correo_bd agregado a cc_list")
+            else:
+                print(f"   ✗ correo_bd es igual al TO, no se agrega")
+        else:
+            print(f"   ✗ correo_bd está vacío después de strip()")
+    else:
+        print(f"   ✗ correo_bd es None o False")
     
     # Agregar correo de la empresa (si existe)
-    if cc_email and cc_email.strip():
-        # Evitar duplicados
-        if cc_email.strip().lower() not in [c.lower() for c in cc_list]:
-            cc_list.append(cc_email.strip())
+    if cc_email:
+        print(f"   ✓ cc_email existe: {cc_email}")
+        if cc_email.strip():
+            print(f"   ✓ cc_email no está vacío")
+            # Evitar duplicados
+            if cc_email.strip().lower() not in [c.lower() for c in cc_list]:
+                cc_list.append(cc_email.strip())
+                print(f"   ✓ cc_email agregado a cc_list")
+            else:
+                print(f"   ✗ cc_email ya existe en cc_list")
+        else:
+            print(f"   ✗ cc_email está vacío después de strip()")
+    else:
+        print(f"   ✗ cc_email es None o False")
+    
+    print(f"   📧 cc_list final: {cc_list}")
     
     # ✅ PAYLOAD CORRECTO para n8n
     payload = {
