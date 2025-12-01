@@ -1184,6 +1184,21 @@ async def validar_caso_con_checks(
         metadata={"checks": checks, "usa_ia": bool(contenido_ia)}
     )
     
+    # ✅ SINCRONIZAR CON GOOGLE SHEETS
+    try:
+        from app.google_sheets_tracker import actualizar_caso_en_sheet, registrar_cambio_estado_sheet
+        actualizar_caso_en_sheet(caso, accion="actualizar")
+        registrar_cambio_estado_sheet(
+            caso, 
+            estado_anterior=caso.estado.value,
+            estado_nuevo=nuevo_estado.value,
+            validador="Sistema",
+            observaciones=observaciones
+        )
+        print(f"✅ Caso {serial} sincronizado con Google Sheets")
+    except Exception as e:
+        print(f"⚠️ Error sincronizando con Sheets: {e}")
+    
     return {
         "status": "ok",
         "serial": serial,

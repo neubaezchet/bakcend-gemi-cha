@@ -442,6 +442,14 @@ async def subir_incapacidad(
     
     print(f"✅ Caso {consecutivo} guardado (ID {nuevo_caso.id}) - Empresa: {empleado_bd.empresa.nombre if empleado_bd and empleado_bd.empresa else 'N/A'}")
     
+    # ✅ SINCRONIZAR CON GOOGLE SHEETS
+    try:
+        from app.google_sheets_tracker import actualizar_caso_en_sheet
+        actualizar_caso_en_sheet(nuevo_caso, accion="crear")
+        print(f"✅ Caso {consecutivo} sincronizado con Google Sheets")
+    except Exception as e:
+        print(f"⚠️ Error sincronizando con Sheets: {e}")
+    
     quinzena_actual = get_current_quinzena()
     
     if empleado_encontrado and empleado_bd:
