@@ -314,7 +314,214 @@ def obtener_empleado(cedula: str, db: Session = Depends(get_db)):
     
     return JSONResponse(status_code=404, content={"error": "Empleado no encontrado"})
 
+@app.get("/verificar-bloqueo/{cedula}")
+def verificar_bloqueo_empleado(
+    cedula: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Verifica si el empleado tiene casos pendientes que bloquean nuevos envíos
+    """
+    
+    # Buscar casos incompletos que bloquean
+    caso_bloqueante = db.query(Case).filter(
+        Case.cedula == cedula,
+        Case.estado.in_([
+            EstadoCaso.INCOMPLETA,
+            EstadoCaso.ILEGIBLE,
+            EstadoCaso.INCOMPLETA_ILEGIBLE
+        ]),
+        Case.bloquea_nueva == True
+    ).first()
+    
+    if caso_bloqueante:
+        # Obtener checks seleccionados (si existen)
+        checks_faltantes = []
+        if hasattr(caso_bloqueante, 'metadata_form') and caso_bloqueante.metadata_form:
+            checks_faltantes = caso_bloqueante.metadata_form.get('checks_seleccionados', [])
+        
+        return {
+            "bloqueado": True,
+            "mensaje": f"Tienes una incapacidad pendiente de completar",
+            "caso_pendiente": {
+                "serial": caso_bloqueante.serial,
+                "tipo": caso_bloqueante.tipo.value if caso_bloqueante.tipo else "General",
+                "estado": caso_bloqueante.estado.value,
+                "fecha_envio": caso_bloqueante.created_at.strftime("%d/%m/%Y"),
+                "motivo": caso_bloqueante.diagnostico or "Documentos faltantes o ilegibles",
+                "checks_faltantes": checks_faltantes,
+                "drive_link": caso_bloqueante.drive_link
+            }
+        }
+    
+    return {
+        "bloqueado": False,
+        "mensaje": "Puedes continuar con el envío"
+    }
+
+@app.get("/verificar-bloqueo/{cedula}")
+def verificar_bloqueo_empleado(
+    cedula: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Verifica si el empleado tiene casos pendientes que bloquean nuevos envíos
+    """
+    
+    # Buscar casos incompletos que bloquean
+    caso_bloqueante = db.query(Case).filter(
+        Case.cedula == cedula,
+        Case.estado.in_([
+            EstadoCaso.INCOMPLETA,
+            EstadoCaso.ILEGIBLE,
+            EstadoCaso.INCOMPLETA_ILEGIBLE
+        ]),
+        Case.bloquea_nueva == True
+    ).first()
+    
+    if caso_bloqueante:
+        # Obtener checks seleccionados (si existen)
+        checks_faltantes = []
+        if hasattr(caso_bloqueante, 'metadata_form') and caso_bloqueante.metadata_form:
+            checks_faltantes = caso_bloqueante.metadata_form.get('checks_seleccionados', [])
+        
+        return {
+            "bloqueado": True,
+            "mensaje": f"Tienes una incapacidad pendiente de completar",
+            "caso_pendiente": {
+                "serial": caso_bloqueante.serial,
+                "tipo": caso_bloqueante.tipo.value if caso_bloqueante.tipo else "General",
+                "estado": caso_bloqueante.estado.value,
+                "fecha_envio": caso_bloqueante.created_at.strftime("%d/%m/%Y"),
+                "motivo": caso_bloqueante.diagnostico or "Documentos faltantes o ilegibles",
+                "checks_faltantes": checks_faltantes,
+                "drive_link": caso_bloqueante.drive_link
+            }
+        }
+    
+    return {
+        "bloqueado": False,
+        "mensaje": "Puedes continuar con el envío"
+    }
+
 # ==================== CONTINUACIÓN DE main.py ====================
+
+@app.post("/casos/{serial}/completar")
+async def completar_caso_incompleto(
+    serial: str,
+    archivos: List[UploadFile] = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Permite al empleado completar un caso incompleto 
+    subiendo solo los documentos faltantes
+    """
+    
+    # 1. Buscar el caso existente
+    caso = db.query(Case).filter(
+        Case.serial == serial,
+        Case.estado.in_([
+            EstadoCaso.INCOMPLETA,
+            EstadoCaso.ILEGIBLE,
+            EstadoCaso.INCOMPLETA_ILEGIBLE
+        ])
+    ).first()
+    
+    if not caso:
+        return JSONResponse(
+            status_code=404, 
+            content={"error": "Caso no encontrado o no está incompleto"}
+        )
+    
+    try:
+        # 2. Procesar nuevos archivos
+        pdf_final_path, original_filenames = await merge_pdfs_from_uploads(
+            archivos, 
+            caso.cedula, 
+            caso.tipo.value if caso.tipo else "general"
+        )
+        
+        # 3. Actualizar archivo en Drive (MISMO file_id)
+        from app.drive_manager import DriveFileManager, CaseFileOrganizer
+        
+        # Extraer file_id del link actual
+        file_id = None
+        if '/file/d/' in caso.drive_link:
+            file_id = caso.drive_link.split('/file/d/')[1].split('/')[0]
+        elif 'id=' in caso.drive_link:
+            file_id = caso.drive_link.split('id=')[1].split('&')[0]
+        
+        if not file_id:
+            raise Exception("No se pudo extraer file_id del link de Drive")
+        
+        # Actualizar contenido del archivo existente
+        drive_manager = DriveFileManager()
+        
+        # Subir nuevo contenido al mismo file_id
+        from googleapiclient.http import MediaFileUpload
+        media = MediaFileUpload(str(pdf_final_path), mimetype='application/pdf', resumable=True)
+        
+        updated_file = drive_manager.service.files().update(
+            fileId=file_id,
+            media_body=media,
+            fields='id, webViewLink, modifiedTime'
+        ).execute()
+        
+        nuevo_link = updated_file.get('webViewLink', caso.drive_link)
+        
+        # Limpiar archivo temporal
+        pdf_final_path.unlink()
+        
+        # 4. Cambiar estado a NUEVO para que validador revise de nuevo
+        estado_anterior = caso.estado.value
+        caso.estado = EstadoCaso.NUEVO
+        caso.bloquea_nueva = False  # ⚠️ IMPORTANTE: Desbloquear
+        caso.drive_link = nuevo_link
+        caso.updated_at = datetime.utcnow()
+        
+        # 5. Registrar evento
+        from app.database import CaseEvent
+        evento = CaseEvent(
+            case_id=caso.id,
+            accion="reenvio_completar",
+            estado_anterior=estado_anterior,
+            estado_nuevo="NUEVO",
+            actor="Empleado",
+            motivo="Documentos completados por el empleado"
+        )
+        db.add(evento)
+        
+        # 6. Mover en Drive de vuelta a "por validar"
+        organizer = CaseFileOrganizer()
+        organizer.mover_caso_segun_estado(caso, "NUEVO")
+        
+        db.commit()
+        
+        print(f"✅ Caso {serial} completado por empleado y desbloqueado")
+        
+        # 7. Sincronizar con Google Sheets
+        try:
+            from app.google_sheets_tracker import actualizar_caso_en_sheet
+            actualizar_caso_en_sheet(caso, accion="actualizar")
+        except Exception as e:
+            print(f"⚠️ Error sincronizando con Sheets: {e}")
+        
+        return {
+            "success": True,
+            "serial": serial,
+            "mensaje": "Documentos completados exitosamente. El caso será revisado nuevamente.",
+            "nuevo_estado": "NUEVO",
+            "nuevo_link": nuevo_link
+        }
+        
+    except Exception as e:
+        print(f"❌ Error completando caso {serial}: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Error procesando archivos: {str(e)}"}
+        )
 
 @app.post("/subir-incapacidad/")
 async def subir_incapacidad(

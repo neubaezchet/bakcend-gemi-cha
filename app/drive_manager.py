@@ -30,16 +30,32 @@ class DriveFileManager:
         return files[0]['id'] if files else None
     
     def update_file_content(self, file_id, new_file_path):
-        """Actualiza el contenido de un archivo existente en Drive"""
-        media = MediaFileUpload(str(new_file_path), mimetype='application/pdf', resumable=True)
+        """
+        Actualiza el contenido de un archivo existente en Drive
+        Mantiene el mismo file_id, solo reemplaza el contenido
+        """
+        from googleapiclient.http import MediaFileUpload
         
-        updated_file = self.service.files().update(
-            fileId=file_id,
-            media_body=media,
-            fields='id, webViewLink, modifiedTime'
-        ).execute()
-        
-        return updated_file
+        try:
+            media = MediaFileUpload(
+                str(new_file_path), 
+                mimetype='application/pdf', 
+                resumable=True
+            )
+            
+            updated_file = self.service.files().update(
+                fileId=file_id,
+                media_body=media,
+                fields='id, webViewLink, modifiedTime'
+            ).execute()
+            
+            print(f"✅ Archivo actualizado en Drive: {file_id}")
+            
+            return updated_file
+            
+        except Exception as e:
+            print(f"❌ Error actualizando archivo {file_id} en Drive: {e}")
+            raise
     
     def move_file(self, file_id, new_parent_folder_id):
         """Mueve un archivo a una nueva carpeta"""

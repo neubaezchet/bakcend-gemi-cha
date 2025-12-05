@@ -1484,6 +1484,48 @@ async def crear_adjunto_desde_pdf(
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
+@router.post("/casos/{serial}/desbloquear")
+async def desbloquear_caso_manual(
+    serial: str,
+    motivo: str = Form(...),
+    db: Session = Depends(get_db),
+    _: bool = Depends(verificar_token_admin)
+):
+    """
+    Permite al validador desbloquear manualmente un caso
+    sin cambiar su estado
+    """
+    
+    caso = db.query(Case).filter(Case.serial == serial).first()
+    
+    if not caso:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    
+    estado_actual = caso.estado.value
+    
+    # Desbloquear
+    caso.bloquea_nueva = False
+    
+    # Registrar evento
+    registrar_evento(
+        db, caso.id,
+        accion="desbloqueo_manual",
+        actor="Validador",
+        estado_anterior=estado_actual,
+        estado_nuevo=estado_actual,  # Sin cambio de estado
+        motivo=motivo
+    )
+    
+    db.commit()
+    
+    print(f"🔓 Caso {serial} desbloqueado manualmente por validador")
+    
+    return {
+        "success": True,
+        "serial": serial,
+        "mensaje": f"Caso desbloqueado exitosamente. Motivo: {motivo}"
+    }
+
 @router.post("/casos/{serial}/guardar-pdf-editado")
 async def guardar_pdf_editado(
     serial: str,
