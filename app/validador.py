@@ -997,7 +997,7 @@ async def validar_caso_con_checks(
     
     empleado = caso.empleado
     
-    # ✅ Cambiar estado en BD
+   # ✅ Cambiar estado en BD
     estado_map = {
         'completa': EstadoCaso.COMPLETA,
         'incompleta': EstadoCaso.INCOMPLETA,
@@ -1008,15 +1008,49 @@ async def validar_caso_con_checks(
     }
     nuevo_estado = estado_map[accion]
     caso.estado = nuevo_estado
+    
+    # ✅ GUARDAR CHECKS EN METADATA (para sistema de reenvío)
+    if checks:
+        if not caso.metadata_form:
+            caso.metadata_form = {}
+        caso.metadata_form['checks_seleccionados'] = checks
+    
+    # ✅ BLOQUEAR si es incompleta/ilegible
+    if accion in ['incompleta', 'ilegible']:
+        caso.bloquea_nueva = True
+        print(f"🔒 Caso {serial} BLOQUEADO - Empleado debe reenviar")
+    
     db.commit()
     
     # ✅ Mover archivo en Drive según el estado
-    organizer = CaseFileOrganizer()
-    nuevo_link = organizer.mover_caso_segun_estado(caso, nuevo_estado.value, observaciones)
-    if nuevo_link:
-        caso.drive_link = nuevo_link
-        db.commit()
-        print(f"✅ Archivo movido en Drive: {nuevo_link}")
+    if accion in ['incompleta', 'ilegible']:
+        # Usar el nuevo gestor de incompletas
+        from app.drive_manager import IncompleteFileManager
+        incomplete_mgr = IncompleteFileManager()
+        
+        # Determinar categoría
+        motivo_categoria = 'Ilegibles' if 'ilegible' in accion else 'Faltan_Soportes'
+        
+        if checks:
+            checks_str = ' '.join(checks).lower()
+            if 'ilegible' in checks_str or 'recortada' in checks_str or 'borrosa' in checks_str:
+                motivo_categoria = 'Ilegibles'
+            elif 'eps' in checks_str or 'transcri' in checks_str:
+                motivo_categoria = 'EPS_No_Transcritas'
+        
+        nuevo_link = incomplete_mgr.mover_a_incompletas(caso, motivo_categoria)
+        if nuevo_link:
+            caso.drive_link = nuevo_link
+            db.commit()
+            print(f"✅ Archivo movido a Incompletas/{motivo_categoria}: {nuevo_link}")
+    else:
+        # Usar el gestor normal para otros estados
+        organizer = CaseFileOrganizer()
+        nuevo_link = organizer.mover_caso_segun_estado(caso, nuevo_estado.value, observaciones)
+        if nuevo_link:
+            caso.drive_link = nuevo_link
+            db.commit()
+            print(f"✅ Archivo movido en Drive: {nuevo_link}")
     
     # Procesar adjuntos si los hay
     adjuntos_paths = []
@@ -1482,7 +1516,341 @@ async def crear_adjunto_desde_pdf(
         if os.path.exists(temp_img):
             os.remove(temp_img)
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
+
+# ==================== ENDPOINTS PARA MANEJO DE REENVÍOS ====================
+
+@router.get("/casos/{serial}/comparar-versiones")
+async def comparar_versiones_reenvio(
+    serial: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(verificar_token_admin)
+):
+    """
+    Muestra al validador ambas versiones para comparar:
+    - Versión incompleta anterior
+    - Versión reenviada nueva
+    """
+    
+    caso = db.query(Case).filter(Case.serial == serial).first()
+    
+    if not caso:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    
+    # Verificar si hay reenvíos
+    if not caso.metadata_form or 'reenvios' not in caso.metadata_form:
+        raise HTTPException(status_code=404, detail="No hay reenvíos para este caso")
+    
+    reenvios = caso.metadata_form['reenvios']
+    ultimo_reenvio = reenvios[-1]
+    
+    return {
+        "serial": serial,
+        "empleado": caso.empleado.nombre if caso.empleado else "N/A",
+        "empresa": caso.empresa.nombre if caso.empresa else "N/A",
+        "cedula": caso.cedula,
+        "tipo": caso.tipo.value if caso.tipo else "N/A",
+        "version_anterior": {
+            "link": caso.drive_link,
+            "estado": "INCOMPLETA",
+            "fecha": caso.updated_at.isoformat()
+        },
+        "version_nueva": {
+            "link": ultimo_reenvio['link'],
+            "estado": ultimo_reenvio['estado'],
+            "fecha": ultimo_reenvio['fecha'],
+            "archivos": ultimo_reenvio['archivos']
+        },
+        "total_reenvios": len(reenvios),
+        "historial_reenvios": reenvios
+    }
+
+
+@router.post("/casos/{serial}/aprobar-reenvio")
+async def aprobar_reenvio(
+    serial: str,
+    decision: str = Form(...),  # 'aprobar' o 'rechazar'
+    motivo: str = Form(default=""),
+    checks: List[str] = Form(default=[]),
+    db: Session = Depends(get_db),
+    _: bool = Depends(verificar_token_admin)
+):
+    """
+    Validador decide si el reenvío es válido:
+    - 'aprobar' → Borra incompleta, mueve nueva a Validadas, desbloquea
+    - 'rechazar' → Nueva también va a Incompletas, sigue bloqueado
+    """
+    
+    caso = db.query(Case).filter(Case.serial == serial).first()
+    
+    if not caso:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    
+    if not caso.metadata_form or 'reenvios' not in caso.metadata_form:
+        raise HTTPException(status_code=400, detail="No hay reenvíos pendientes")
+    
+    reenvios = caso.metadata_form['reenvios']
+    ultimo_reenvio = reenvios[-1]
+    
+    if decision == 'aprobar':
+        # ✅ APROBAR REENVÍO
+        
+        print(f"✅ Aprobando reenvío de {serial}...")
+        
+        # 1. Buscar y eliminar versión incompleta de Drive
+        from app.drive_manager import IncompleteFileManager
+        incomplete_mgr = IncompleteFileManager()
+        
+        version_incompleta = incomplete_mgr.buscar_version_incompleta(serial)
+        if version_incompleta:
+            print(f"   🗑️ Eliminando versión incompleta: {version_incompleta['filename']}")
+            incomplete_mgr.eliminar_version_incompleta(version_incompleta['file_id'])
+        
+        # 2. Actualizar caso con nueva versión
+        caso.drive_link = ultimo_reenvio['link']
+        caso.estado = EstadoCaso.COMPLETA
+        caso.bloquea_nueva = False  # ✅ DESBLOQUEAR
+        
+        # 3. Actualizar metadata
+        ultimo_reenvio['estado'] = 'APROBADO'
+        ultimo_reenvio['fecha_aprobacion'] = datetime.now().isoformat()
+        ultimo_reenvio['validador_decision'] = 'APROBAR'
+        ultimo_reenvio['motivo'] = motivo or "Documentos correctos"
+        caso.metadata_form['reenvios'][-1] = ultimo_reenvio
+        
+        # 4. Mover archivo en Drive a Validadas
+        from app.drive_manager import CaseFileOrganizer
+        organizer = CaseFileOrganizer()
+        nuevo_link = organizer.mover_caso_segun_estado(caso, 'COMPLETA')
+        if nuevo_link:
+            caso.drive_link = nuevo_link
+            print(f"   ✅ Archivo movido a Validadas: {nuevo_link}")
+        
+        # 5. Registrar evento
+        registrar_evento(
+            db, caso.id,
+            "reenvio_aprobado",
+            actor="Validador",
+            estado_anterior="INCOMPLETA",
+            estado_nuevo="COMPLETA",
+            motivo=motivo or "Reenvío aprobado - documentos correctos"
+        )
+        
+        db.commit()
+        
+        # 6. Enviar email al empleado
+        from app.email_templates import get_email_template_universal
+        
+        email_aprobacion = get_email_template_universal(
+            tipo_email='completa',
+            nombre=caso.empleado.nombre if caso.empleado else 'Colaborador/a',
+            serial=serial,
+            empresa=caso.empresa.nombre if caso.empresa else 'N/A',
+            tipo_incapacidad=caso.tipo.value if caso.tipo else 'General',
+            telefono=caso.telefono_form,
+            email=caso.email_form,
+            link_drive=caso.drive_link
+        )
+        
+        asunto = f"✅ Incapacidad Validada - {serial} - {caso.empleado.nombre if caso.empleado else 'N/A'} - {caso.empresa.nombre if caso.empresa else 'N/A'}"
+        
+        send_html_email(
+            caso.email_form,
+            asunto,
+            email_aprobacion,
+            caso=caso
+        )
+        
+        print(f"✅ Reenvío APROBADO: {serial} - Caso desbloqueado y validado")
+        
+        # 7. Sincronizar con Sheets
+        try:
+            from app.google_sheets_tracker import actualizar_caso_en_sheet, registrar_cambio_estado_sheet
+            actualizar_caso_en_sheet(caso, accion="actualizar")
+            registrar_cambio_estado_sheet(
+                caso,
+                estado_anterior="INCOMPLETA",
+                estado_nuevo="COMPLETA",
+                validador="Sistema",
+                observaciones="Reenvío aprobado"
+            )
+        except Exception as e:
+            print(f"⚠️ Error sincronizando con Sheets: {e}")
+        
+        return {
+            "success": True,
+            "decision": "aprobado",
+            "serial": serial,
+            "nuevo_estado": "COMPLETA",
+            "desbloqueado": True,
+            "nuevo_link": caso.drive_link,
+            "mensaje": "Reenvío aprobado. Caso validado y desbloqueado."
+        }
+    
+    elif decision == 'rechazar':
+        # ❌ RECHAZAR REENVÍO
+        
+        print(f"❌ Rechazando reenvío de {serial}...")
+        
+        # 1. Determinar categoría para Incompletas
+        motivo_categoria = 'Faltan_Soportes'  # Default
+        
+        if checks:
+            # Determinar categoría según los checks seleccionados
+            checks_str = ' '.join(checks).lower()
+            if 'ilegible' in checks_str or 'recortada' in checks_str or 'borrosa' in checks_str:
+                motivo_categoria = 'Ilegibles'
+            elif 'eps' in checks_str or 'transcri' in checks_str:
+                motivo_categoria = 'EPS_No_Transcritas'
+        elif motivo:
+            # Determinar por el motivo escrito
+            if 'ilegible' in motivo.lower():
+                motivo_categoria = 'Ilegibles'
+            elif 'eps' in motivo.lower():
+                motivo_categoria = 'EPS_No_Transcritas'
+        
+        # 2. Mover nueva versión TAMBIÉN a Incompletas
+        from app.drive_manager import IncompleteFileManager
+        incomplete_mgr = IncompleteFileManager()
+        
+        # Crear caso temporal con el nuevo link para moverlo
+        caso_temp = caso
+        caso_temp.drive_link = ultimo_reenvio['link']
+        
+        nuevo_link_incompleta = incomplete_mgr.mover_a_incompletas(caso_temp, motivo_categoria)
+        
+        if nuevo_link_incompleta:
+            print(f"   📁 Nueva versión movida a Incompletas/{motivo_categoria}")
+        
+        # 3. Actualizar metadata
+        ultimo_reenvio['estado'] = 'RECHAZADO'
+        ultimo_reenvio['fecha_rechazo'] = datetime.now().isoformat()
+        ultimo_reenvio['validador_decision'] = 'RECHAZAR'
+        ultimo_reenvio['motivo_rechazo'] = motivo
+        ultimo_reenvio['checks_faltantes'] = checks
+        caso.metadata_form['reenvios'][-1] = ultimo_reenvio
+        
+        # 4. Mantener bloqueo y estado incompleto
+        caso.estado = EstadoCaso.INCOMPLETA
+        caso.bloquea_nueva = True  # ✅ SIGUE BLOQUEADO
+        
+        # 5. Guardar checks en metadata para próximo intento
+        if checks:
+            caso.metadata_form['checks_seleccionados'] = checks
+        
+        # 6. Registrar evento
+        registrar_evento(
+            db, caso.id,
+            "reenvio_rechazado",
+            actor="Validador",
+            estado_anterior="NUEVO",
+            estado_nuevo="INCOMPLETA",
+            motivo=motivo or "Reenvío rechazado - documentos aún incompletos",
+            metadata={'checks': checks, 'categoria': motivo_categoria}
+        )
+        
+        db.commit()
+        
+        # 7. Enviar email al empleado con IA
+        from app.email_templates import get_email_template_universal
+        from app.ia_redactor import redactar_email_incompleta
+        
+        print(f"   🤖 Generando email con IA para notificar rechazo...")
+        
+        contenido_ia = redactar_email_incompleta(
+            caso.empleado.nombre if caso.empleado else 'Colaborador/a',
+            serial,
+            checks,
+            caso.tipo.value if caso.tipo else 'General'
+        )
+        
+        email_rechazo = get_email_template_universal(
+            tipo_email='incompleta',
+            nombre=caso.empleado.nombre if caso.empleado else 'Colaborador/a',
+            serial=serial,
+            empresa=caso.empresa.nombre if caso.empresa else 'N/A',
+            tipo_incapacidad=caso.tipo.value if caso.tipo else 'General',
+            telefono=caso.telefono_form,
+            email=caso.email_form,
+            link_drive=caso.drive_link,
+            checks_seleccionados=checks,
+            contenido_ia=contenido_ia
+        )
+        
+        asunto = f"❌ Documentos Aún Incompletos - {serial} - {caso.empleado.nombre if caso.empleado else 'N/A'} - {caso.empresa.nombre if caso.empresa else 'N/A'}"
+        
+        send_html_email(
+            caso.email_form,
+            asunto,
+            email_rechazo,
+            caso=caso
+        )
+        
+        print(f"❌ Reenvío RECHAZADO: {serial} - Caso sigue bloqueado")
+        
+        # 8. Sincronizar con Sheets
+        try:
+            from app.google_sheets_tracker import actualizar_caso_en_sheet, registrar_cambio_estado_sheet
+            actualizar_caso_en_sheet(caso, accion="actualizar")
+            registrar_cambio_estado_sheet(
+                caso,
+                estado_anterior="NUEVO",
+                estado_nuevo="INCOMPLETA",
+                validador="Sistema",
+                observaciones=f"Reenvío rechazado - {motivo_categoria}"
+            )
+        except Exception as e:
+            print(f"⚠️ Error sincronizando con Sheets: {e}")
+        
+        return {
+            "success": True,
+            "decision": "rechazado",
+            "serial": serial,
+            "nuevo_estado": "INCOMPLETA",
+            "desbloqueado": False,
+            "checks_faltantes": checks,
+            "categoria": motivo_categoria,
+            "mensaje": "Reenvío rechazado. Documentos aún incompletos. Empleado debe volver a enviar."
+        }
+    
+    else:
+        raise HTTPException(status_code=400, detail="Decisión inválida. Use 'aprobar' o 'rechazar'")
+
+
+@router.get("/casos/{serial}/historial-reenvios")
+async def obtener_historial_reenvios(
+    serial: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(verificar_token_admin)
+):
+    """
+    Obtiene el historial completo de reenvíos de un caso
+    """
+    
+    caso = db.query(Case).filter(Case.serial == serial).first()
+    
+    if not caso:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    
+    if not caso.metadata_form or 'reenvios' not in caso.metadata_form:
+        return {
+            "serial": serial,
+            "tiene_reenvios": False,
+            "total_reenvios": 0,
+            "historial": []
+        }
+    
+    reenvios = caso.metadata_form['reenvios']
+    
+    return {
+        "serial": serial,
+        "tiene_reenvios": True,
+        "total_reenvios": len(reenvios),
+        "estado_actual": caso.estado.value,
+        "bloqueado": caso.bloquea_nueva,
+        "historial": reenvios
+    }
 
 @router.post("/casos/{serial}/desbloquear")
 async def desbloquear_caso_manual(

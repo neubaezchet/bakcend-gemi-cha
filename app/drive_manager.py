@@ -276,3 +276,128 @@ class CaseFileOrganizer:
     def _get_file_link(self, file_id):
         """Obtiene el link de visualización de un archivo"""
         return f"https://drive.google.com/file/d/{file_id}/view"
+
+
+# ==================== GESTOR DE ARCHIVOS INCOMPLETOS ====================
+
+class IncompleteFileManager:
+    """Gestor de archivos incompletos con sistema de reenvío"""
+    
+    def __init__(self):
+        self.drive_manager = DriveFileManager()
+    
+    def mover_a_incompletas(self, caso, motivo_categoria: str):
+        """
+        Mueve archivo a carpeta Incompletas/{Empresa}/{Categoria}/
+        
+        Args:
+            caso: Objeto Case
+            motivo_categoria: 'Ilegibles', 'Faltan_Soportes', 'EPS_No_Transcritas', 'Falsas'
+        """
+        if not caso.drive_link:
+            print(f"⚠️ Caso {caso.serial} sin link de Drive")
+            return None
+        
+        file_id = self._extract_file_id(caso.drive_link)
+        if not file_id:
+            return None
+        
+        try:
+            # Crear estructura: Incompletas/{Empresa}/{Categoria}/
+            incompletas_main = create_folder_if_not_exists(
+                self.drive_manager.service, b'Incompletas', 'root'
+            )
+            
+            empresa_nombre = caso.empresa.nombre if caso.empresa else "OTRA_EMPRESA"
+            incompletas_empresa = create_folder_if_not_exists(
+                self.drive_manager.service,
+                empresa_nombre.encode(),
+                incompletas_main
+            )
+            
+            # Crear subcarpeta según categoría
+            categoria_folder = create_folder_if_not_exists(
+                self.drive_manager.service,
+                motivo_categoria.encode(),
+                incompletas_empresa
+            )
+            
+            # Mover archivo
+            self.drive_manager.move_file(file_id, categoria_folder)
+            
+            print(f"✅ Caso {caso.serial} → Incompletas/{motivo_categoria}")
+            return self._get_file_link(file_id)
+            
+        except Exception as e:
+            print(f"❌ Error moviendo a incompletas: {e}")
+            return None
+    
+    def buscar_version_incompleta(self, serial: str):
+        """
+        Busca si existe una versión incompleta con el mismo serial
+        
+        Returns:
+            dict con file_id, filename, link si existe, None si no
+        """
+        try:
+            # Buscar en carpeta Incompletas/
+            query = f"name contains '{serial}' and trashed=false"
+            
+            results = self.drive_manager.service.files().list(
+                q=query,
+                spaces='drive',
+                fields='files(id, name, parents, webViewLink)',
+                pageSize=100
+            ).execute()
+            
+            files = results.get('files', [])
+            
+            # Filtrar solo los que están en Incompletas
+            for file in files:
+                # Verificar que el archivo esté en una carpeta Incompletas
+                if 'parents' in file:
+                    for parent_id in file['parents']:
+                        try:
+                            folder = self.drive_manager.service.files().get(
+                                fileId=parent_id,
+                                fields='name'
+                            ).execute()
+                            
+                            # Si alguno de los padres contiene "Incompletas"
+                            if 'Incompletas' in folder.get('name', ''):
+                                print(f"🔍 Encontrada versión incompleta de {serial}: {file['name']}")
+                                return {
+                                    'file_id': file['id'],
+                                    'filename': file['name'],
+                                    'link': file['webViewLink']
+                                }
+                        except:
+                            continue
+            
+            return None
+            
+        except Exception as e:
+            print(f"❌ Error buscando incompleta: {e}")
+            return None
+    
+    def eliminar_version_incompleta(self, file_id: str):
+        """Elimina archivo de Incompletas/ cuando se aprueba el reenvío"""
+        try:
+            self.drive_manager.service.files().delete(fileId=file_id).execute()
+            print(f"🗑️ Versión incompleta eliminada: {file_id}")
+            return True
+        except Exception as e:
+            print(f"❌ Error eliminando: {e}")
+            return False
+    
+    def _extract_file_id(self, drive_link):
+        """Extrae file_id de un link de Drive"""
+        if '/file/d/' in drive_link:
+            return drive_link.split('/file/d/')[1].split('/')[0]
+        elif 'id=' in drive_link:
+            return drive_link.split('id=')[1].split('&')[0]
+        return None
+    
+    def _get_file_link(self, file_id):
+        """Obtiene link de visualización"""
+        return f"https://drive.google.com/file/d/{file_id}/view"

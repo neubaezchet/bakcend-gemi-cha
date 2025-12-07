@@ -359,11 +359,7 @@ def verificar_bloqueo_empleado(
         "mensaje": "Puedes continuar con el envío"
     }
 
-@app.get("/verificar-bloqueo/{cedula}")
-def verificar_bloqueo_empleado(
-    cedula: str,
-    db: Session = Depends(get_db)
-):
+
     """
     Verifica si el empleado tiene casos pendientes que bloquean nuevos envíos
     """
@@ -403,6 +399,146 @@ def verificar_bloqueo_empleado(
         "bloqueado": False,
         "mensaje": "Puedes continuar con el envío"
     }
+
+@app.post("/casos/{serial}/reenviar")
+async def reenviar_caso_incompleto(
+    serial: str,
+    archivos: List[UploadFile] = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Permite al empleado reenviar una incapacidad incompleta
+    - NO crea nuevo caso
+    - Agrega nueva versión al caso existente
+    - Alerta al validador para comparar
+    """
+    
+    # 1. Buscar caso existente
+    caso = db.query(Case).filter(
+        Case.serial == serial,
+        Case.estado.in_([
+            EstadoCaso.INCOMPLETA,
+            EstadoCaso.ILEGIBLE,
+            EstadoCaso.INCOMPLETA_ILEGIBLE
+        ])
+    ).first()
+    
+    if not caso:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Caso no encontrado o no está incompleto"}
+        )
+    
+    try:
+        # 2. Procesar nuevos archivos
+        pdf_final_path, original_filenames = await merge_pdfs_from_uploads(
+            archivos,
+            caso.cedula,
+            caso.tipo.value if caso.tipo else "general"
+        )
+        
+        # 3. Subir NUEVO archivo a Drive (NO reemplazar el viejo aún)
+        from app.serial_generator import extraer_iniciales
+        
+        empresa_destino = caso.empresa.nombre if caso.empresa else "OTRA_EMPRESA"
+        
+        # Generar nombre único para versión nueva
+        nuevo_nombre = f"{serial}_REENVIO_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        nuevo_link = upload_to_drive(
+            pdf_final_path,
+            empresa_destino,
+            caso.cedula,
+            caso.tipo.value if caso.tipo else "general",
+            nuevo_nombre
+        )
+        
+        pdf_final_path.unlink()
+        
+        # 4. Guardar metadata del reenvío en el caso
+        if not caso.metadata_form:
+            caso.metadata_form = {}
+        
+        if 'reenvios' not in caso.metadata_form:
+            caso.metadata_form['reenvios'] = []
+        
+        caso.metadata_form['reenvios'].append({
+            'fecha': datetime.now().isoformat(),
+            'link': nuevo_link,
+            'archivos': original_filenames,
+            'estado': 'PENDIENTE_REVISION'
+        })
+        
+        # 5. Cambiar estado a "NUEVO" para que validador lo vea
+        estado_anterior = caso.estado.value
+        caso.estado = EstadoCaso.NUEVO
+        caso.updated_at = datetime.utcnow()
+        
+        # 6. Registrar evento
+        evento = CaseEvent(
+            case_id=caso.id,
+            accion="reenvio_detectado",
+            estado_anterior=estado_anterior,
+            estado_nuevo="NUEVO",
+            actor="Empleado",
+            motivo=f"Reenvío #{len(caso.metadata_form['reenvios'])}",
+            metadata_json={
+                'nuevo_link': nuevo_link,
+                'total_reenvios': len(caso.metadata_form['reenvios'])
+            }
+        )
+        db.add(evento)
+        
+        db.commit()
+        
+        print(f"✅ Reenvío detectado para {serial}")
+        print(f"   📁 Versión anterior: {caso.drive_link}")
+        print(f"   📁 Versión nueva: {nuevo_link}")
+        
+        # 7. Notificar al validador (email interno)
+        try:
+            html_alerta = f"""
+            <div style="font-family: Arial; max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #f59e0b;">⚠️ REENVÍO DETECTADO</h2>
+                <p><strong>Serial:</strong> {serial}</p>
+                <p><strong>Empleado:</strong> {caso.empleado.nombre if caso.empleado else 'N/A'}</p>
+                <p><strong>Empresa:</strong> {caso.empresa.nombre if caso.empresa else 'N/A'}</p>
+                <hr>
+                <p>El empleado ha reenviado documentos. Ingresa al portal para comparar versiones.</p>
+                <p><a href="{nuevo_link}">📄 Ver nueva versión</a></p>
+                <p><a href="{caso.drive_link}">📄 Ver versión anterior (incompleta)</a></p>
+            </div>
+            """
+            
+            enviar_a_n8n(
+                tipo_notificacion='extra',
+                email='xoblaxbaezaospino@gmail.com',
+                serial=serial,
+                subject=f'🔄 Reenvío - {serial} - {caso.empleado.nombre if caso.empleado else "N/A"}',
+                html_content=html_alerta,
+                cc_email=None,
+                correo_bd=None,
+                adjuntos_base64=[]
+            )
+        except Exception as e:
+            print(f"⚠️ Error enviando alerta: {e}")
+        
+        return {
+            "success": True,
+            "serial": serial,
+            "mensaje": "Documentos reenviados exitosamente. El validador revisará tu caso.",
+            "total_reenvios": len(caso.metadata_form['reenvios']),
+            "nuevo_link": nuevo_link
+        }
+        
+    except Exception as e:
+        print(f"❌ Error procesando reenvío {serial}: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Error procesando archivos: {str(e)}"}
+        )
 
 # ==================== CONTINUACIÓN DE main.py ====================
 
