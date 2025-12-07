@@ -1516,8 +1516,6 @@ async def crear_adjunto_desde_pdf(
         if os.path.exists(temp_img):
             os.remove(temp_img)
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
-raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
-
 
 # ==================== ENDPOINTS PARA MANEJO DE REENVÍOS ====================
 
