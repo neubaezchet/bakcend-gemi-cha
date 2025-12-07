@@ -19,7 +19,7 @@ jobs:
           echo "🔄 Pinging Backend..."
           curl -s -o /dev/null -w "✅ Backend: HTTP %{http_code}\n" \
             --max-time 10 \
-            https://bakcend-gemi-cha.onrender.com/health || echo "⚠️ Backend falló"
+            https://bakcend-gemi-cha-2.onrender.com/health || echo "⚠️ Backend falló"
       
       - name: Ping N8N
         continue-on-error: true
@@ -27,7 +27,7 @@ jobs:
           echo "🔄 Pinging N8N..."
           curl -s -o /dev/null -w "✅ N8N: HTTP %{http_code}\n" \
             --max-time 10 \
-            https://n8n-incaneurobaeza-2025.onrender.com/healthz || echo "⚠️ N8N falló"
+            https://n8n-incaneurobaeza.onrender.com/healthz || echo "⚠️ N8N falló"
       
       - name: Summary
         run: |
