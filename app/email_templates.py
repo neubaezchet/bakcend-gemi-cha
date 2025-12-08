@@ -514,7 +514,73 @@ def generar_detalles_caso(serial, nombre, empresa, tipo_incapacidad, telefono, e
         </table>
     </div>
     '''
-
+def enviar_email_cambio_tipo(email: str, nombre: str, serial: str, tipo_anterior: str, tipo_nuevo: str, docs_requeridos: list):
+    """
+    Envía email informando del cambio de tipo de incapacidad
+    """
+    # Mapeo de tipos a nombres legibles
+    tipos_nombres = {
+        'maternity': 'Maternidad',
+        'paternity': 'Paternidad',
+        'general': 'Enfermedad General',
+        'traffic': 'Accidente de Tránsito',
+        'labor': 'Accidente Laboral'
+    }
+    
+    tipo_ant_nombre = tipos_nombres.get(tipo_anterior, tipo_anterior)
+    tipo_nuevo_nombre = tipos_nombres.get(tipo_nuevo, tipo_nuevo)
+    
+    # Generar lista de documentos
+    docs_html = "<ul style='margin: 10px 0; padding-left: 20px;'>"
+    for doc in docs_requeridos:
+        docs_html += f"<li style='margin: 5px 0;'>{doc}</li>"
+    docs_html += "</ul>"
+    
+    asunto = f"🔄 Cambio de Tipo de Incapacidad - {serial}"
+    
+    cuerpo = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+            <h2 style="color: #f59e0b;">🔄 Actualización de Tipo de Incapacidad</h2>
+            
+            <p>Hola <strong>{nombre}</strong>,</p>
+            
+            <p>Hemos actualizado el tipo de tu incapacidad <strong>{serial}</strong>:</p>
+            
+            <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 0;">
+                    <strong>Tipo anterior:</strong> {tipo_ant_nombre}<br>
+                    <strong>Nuevo tipo:</strong> {tipo_nuevo_nombre}
+                </p>
+            </div>
+            
+            <p>Debido a este cambio, los documentos requeridos son:</p>
+            
+            {docs_html}
+            
+            <div style="background-color: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #1e40af;">📝 Qué debes hacer:</h3>
+                <ol style="margin: 10px 0; padding-left: 20px;">
+                    <li style="margin: 5px 0;">Revisa la nueva lista de documentos</li>
+                    <li style="margin: 5px 0;">Prepara TODOS los documentos solicitados</li>
+                    <li style="margin: 5px 0;">Ingresa al portal con tu cédula</li>
+                    <li style="margin: 5px 0;">Completa la incapacidad subiendo los documentos</li>
+                </ol>
+            </div>
+            
+            <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 12px;">
+                Este es un correo automático del sistema de gestión de incapacidades.<br>
+                No respondas a este mensaje.
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    # Enviar usando la función existente
+    from app.main import send_html_email
+    send_html_email(email, asunto, cuerpo)
 
 # ==================== FUNCIONES DE COMPATIBILIDAD (LEGACY) ====================
 

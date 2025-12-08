@@ -21,6 +21,9 @@ from app.sync_excel import sincronizar_empleado_desde_excel  # ✅ NUEVO
 from app.serial_generator import generar_serial_unico  # ✅ NUEVO
 
 from app.n8n_notifier import enviar_a_n8n
+from fastapi import Request, Header
+from app.database import CaseEvent
+
 # ==================== FUNCIÓN: DOCUMENTOS REQUERIDOS ====================
 def obtener_documentos_requeridos(tipo: str, dias: int = None, phantom: bool = None, mother_works: bool = None) -> list:
     """
@@ -372,6 +375,8 @@ def enviar_email_cambio_tipo(email: str, nombre: str, serial: str, tipo_anterior
     """
     
     send_html_email(email, asunto, cuerpo)
+
+def mapear_tipo_incapacidad(tipo_frontend: str) -> TipoIncapacidad:
     tipo_map = {
         'maternity': TipoIncapacidad.MATERNIDAD,
         'paternidad': TipoIncapacidad.PATERNIDAD,
@@ -1122,10 +1127,218 @@ async def check_drive_token_health():
         
     except Exception as e:
         return {"status": "error", "error": str(e)}
+@app.post("/validador/casos/{serial}/cambiar-tipo")
+async def cambiar_tipo_incapacidad(
+    serial: str,
+    request: Request,
+    token: str = Header(None, alias="X-Admin-Token"),
+    db: Session = Depends(get_db)
+):
+    """
+    Permite al validador cambiar el tipo de incapacidad
+    cuando detecta que se clasificó mal
+    """
+    # 1. Validar token
+    from app.validador import verificar_token_admin
+    verificar_token_admin(token)
+    
+    # 2. Leer datos del body
+    try:
+        datos = await request.json()
+        nuevo_tipo = datos.get('nuevo_tipo')
+    except:
+        raise HTTPException(status_code=400, detail="Datos inválidos")
+    
+    # 3. Validar tipo
+    tipos_validos = ['maternity', 'paternity', 'general', 'traffic', 'labor']
+    if nuevo_tipo not in tipos_validos:
+        raise HTTPException(status_code=400, detail=f"Tipo inválido. Usa: {', '.join(tipos_validos)}")
+    
+    # 4. Buscar caso en BD
+    caso = db.query(Case).filter(Case.serial == serial).first()
+    
+    if not caso:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    
+    # 5. Guardar tipo anterior y actualizar
+    tipo_anterior = caso.tipo.value if caso.tipo else 'desconocido'
+    
+    # Mapear tipo nuevo a TipoIncapacidad enum
+    tipo_map = {
+        'maternity': TipoIncapacidad.MATERNIDAD,
+        'paternity': TipoIncapacidad.PATERNIDAD,
+        'general': TipoIncapacidad.ENFERMEDAD_GENERAL,
+        'traffic': TipoIncapacidad.ACCIDENTE_TRANSITO,
+        'labor': TipoIncapacidad.ENFERMEDAD_LABORAL
+    }
+    
+    caso.tipo = tipo_map[nuevo_tipo]
+    caso.subtipo = nuevo_tipo
+    
+    # Actualizar metadata
+    if not caso.metadata_form:
+        caso.metadata_form = {}
+    
+    caso.metadata_form['tipo_anterior'] = tipo_anterior
+    caso.metadata_form['cambio_tipo_fecha'] = datetime.now().isoformat()
+    caso.metadata_form['cambio_tipo_validador'] = "sistema"
+    
+    # 6. Cambiar estado a INCOMPLETA (requiere nuevos documentos)
+    caso.estado = EstadoCaso.INCOMPLETA
+    caso.bloquea_nueva = True
+    caso.updated_at = datetime.utcnow()
+    
+    db.commit()
+    
+    # 7. Obtener nuevos documentos requeridos
+    docs_requeridos = obtener_documentos_requeridos(nuevo_tipo)
+    
+    # 8. Enviar email al empleado
+    empleado_email = caso.email_form
+    empleado_nombre = caso.empleado.nombre if caso.empleado else 'Empleado'
+    
+    if empleado_email:
+        try:
+            enviar_email_cambio_tipo(
+                email=empleado_email,
+                nombre=empleado_nombre,
+                serial=serial,
+                tipo_anterior=tipo_anterior,
+                tipo_nuevo=nuevo_tipo,
+                docs_requeridos=docs_requeridos
+            )
+        except Exception as e:
+            print(f"Error enviando email: {e}")
+    
+    # 9. Registrar evento
+    from app.validador import registrar_evento
+    registrar_evento(
+        db, caso.id,
+        "cambio_tipo",
+        actor="Validador",
+        estado_anterior=tipo_anterior,
+        estado_nuevo=nuevo_tipo,
+        motivo=f"Tipo cambiado de {tipo_anterior} a {nuevo_tipo}",
+        metadata={'docs_requeridos': docs_requeridos}
+    )
+    
+    return {
+        "mensaje": f"Tipo cambiado exitosamente de {tipo_anterior} a {nuevo_tipo}",
+        "tipo_anterior": tipo_anterior,
+        "tipo_nuevo": nuevo_tipo,
+        "documentos_requeridos": docs_requeridos,
+        "email_enviado": empleado_email is not None
+    }
+
+@app.get("/health")
+def health_check(db: Session = Depends(get_db)):
+@app.post("/validador/casos/{serial}/cambiar-tipo")
+async def cambiar_tipo_incapacidad(
+    serial: str,
+    request: Request,
+    token: str = Header(None, alias="X-Admin-Token"),
+    db: Session = Depends(get_db)
+):
+    """
+    Permite al validador cambiar el tipo de incapacidad
+    cuando detecta que se clasificó mal
+    """
+    # 1. Validar token
+    from app.validador import verificar_token_admin
+    verificar_token_admin(token)
+    
+    # 2. Leer datos del body
+    try:
+        datos = await request.json()
+        nuevo_tipo = datos.get('nuevo_tipo')
+    except:
+        raise HTTPException(status_code=400, detail="Datos inválidos")
+    
+    # 3. Validar tipo
+    tipos_validos = ['maternity', 'paternity', 'general', 'traffic', 'labor']
+    if nuevo_tipo not in tipos_validos:
+        raise HTTPException(status_code=400, detail=f"Tipo inválido. Usa: {', '.join(tipos_validos)}")
+    
+    # 4. Buscar caso en BD
+    caso = db.query(Case).filter(Case.serial == serial).first()
+    
+    if not caso:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    
+    # 5. Guardar tipo anterior y actualizar
+    tipo_anterior = caso.tipo.value if caso.tipo else 'desconocido'
+    
+    # Mapear tipo nuevo a TipoIncapacidad enum
+    tipo_map = {
+        'maternity': TipoIncapacidad.MATERNIDAD,
+        'paternity': TipoIncapacidad.PATERNIDAD,
+        'general': TipoIncapacidad.ENFERMEDAD_GENERAL,
+        'traffic': TipoIncapacidad.ACCIDENTE_TRANSITO,
+        'labor': TipoIncapacidad.ENFERMEDAD_LABORAL
+    }
+    
+    caso.tipo = tipo_map[nuevo_tipo]
+    caso.subtipo = nuevo_tipo
+    
+    # Actualizar metadata
+    if not caso.metadata_form:
+        caso.metadata_form = {}
+    
+    caso.metadata_form['tipo_anterior'] = tipo_anterior
+    caso.metadata_form['cambio_tipo_fecha'] = datetime.now().isoformat()
+    caso.metadata_form['cambio_tipo_validador'] = "sistema"
+    
+    # 6. Cambiar estado a INCOMPLETA (requiere nuevos documentos)
+    caso.estado = EstadoCaso.INCOMPLETA
+    caso.bloquea_nueva = True
+    caso.updated_at = datetime.utcnow()
+    
+    db.commit()
+    
+    # 7. Obtener nuevos documentos requeridos
+    docs_requeridos = obtener_documentos_requeridos(nuevo_tipo)
+    
+    # 8. Enviar email al empleado
+    empleado_email = caso.email_form
+    empleado_nombre = caso.empleado.nombre if caso.empleado else 'Empleado'
+    
+    if empleado_email:
+        try:
+            enviar_email_cambio_tipo(
+                email=empleado_email,
+                nombre=empleado_nombre,
+                serial=serial,
+                tipo_anterior=tipo_anterior,
+                tipo_nuevo=nuevo_tipo,
+                docs_requeridos=docs_requeridos
+            )
+        except Exception as e:
+            print(f"Error enviando email: {e}")
+    
+    # 9. Registrar evento
+    from app.validador import registrar_evento
+    registrar_evento(
+        db, caso.id,
+        "cambio_tipo",
+        actor="Validador",
+        estado_anterior=tipo_anterior,
+        estado_nuevo=nuevo_tipo,
+        motivo=f"Tipo cambiado de {tipo_anterior} a {nuevo_tipo}",
+        metadata={'docs_requeridos': docs_requeridos}
+    )
+    
+    return {
+        "mensaje": f"Tipo cambiado exitosamente de {tipo_anterior} a {nuevo_tipo}",
+        "tipo_anterior": tipo_anterior,
+        "tipo_nuevo": nuevo_tipo,
+        "documentos_requeridos": docs_requeridos,
+        "email_enviado": empleado_email is not None
+    }
 
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):
     """Verifica estado de API y BD"""
+
     try:
         from sqlalchemy import text
         db.execute(text("SELECT 1"))
