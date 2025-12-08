@@ -21,7 +21,51 @@ from app.sync_excel import sincronizar_empleado_desde_excel  # ✅ NUEVO
 from app.serial_generator import generar_serial_unico  # ✅ NUEVO
 
 from app.n8n_notifier import enviar_a_n8n
-
+# ==================== FUNCIÓN: DOCUMENTOS REQUERIDOS ====================
+def obtener_documentos_requeridos(tipo: str, dias: int = None, phantom: bool = None, mother_works: bool = None) -> list:
+    """
+    Retorna lista de documentos requeridos según el tipo
+    """
+    if tipo == 'maternity':
+        return [
+            'Licencia o incapacidad de maternidad',
+            'Epicrisis o resumen clínico',
+            'Cédula de la madre',
+            'Registro civil',
+            'Certificado de nacido vivo'
+        ]
+    
+    elif tipo == 'paternity':
+        docs = [
+            'Epicrisis o resumen clínico',
+            'Cédula del padre',
+            'Registro civil',
+            'Certificado de nacido vivo'
+        ]
+        if mother_works:
+            docs.append('Licencia o incapacidad de maternidad')
+        return docs
+    
+    elif tipo == 'general':
+        if dias and dias <= 2:
+            return ['Incapacidad médica']
+        else:
+            return ['Incapacidad médica', 'Epicrisis o resumen clínico']
+    
+    elif tipo == 'labor':
+        if dias and dias <= 2:
+            return ['Incapacidad médica']
+        else:
+            return ['Incapacidad médica', 'Epicrisis o resumen clínico']
+    
+    elif tipo == 'traffic':
+        docs = ['Incapacidad médica', 'Epicrisis o resumen clínico', 'FURIPS']
+        if not phantom:
+            docs.append('SOAT')
+        return docs
+    
+    else:
+        return ['Incapacidad médica']  # Default
 app = FastAPI(title="IncaNeurobaeza API", version="2.0.0")
 
 app.add_middleware(
@@ -263,7 +307,71 @@ def send_html_email(to_email: str, subject: str, html_body: str, caso=None):
         print(f"❌ Error: {e}")
         return False, str(e)
 
-def mapear_tipo_incapacidad(tipo_frontend: str) -> TipoIncapacidad:
+def enviar_email_cambio_tipo(email: str, nombre: str, serial: str, tipo_anterior: str, tipo_nuevo: str, docs_requeridos: list):
+    """
+    Envía email informando del cambio de tipo de incapacidad
+    """
+    # Mapeo de tipos a nombres legibles
+    tipos_nombres = {
+        'maternity': 'Maternidad',
+        'paternity': 'Paternidad',
+        'general': 'Enfermedad General',
+        'traffic': 'Accidente de Tránsito',
+        'labor': 'Accidente Laboral'
+    }
+    
+    tipo_ant_nombre = tipos_nombres.get(tipo_anterior, tipo_anterior)
+    tipo_nuevo_nombre = tipos_nombres.get(tipo_nuevo, tipo_nuevo)
+    
+    # Generar lista de documentos
+    docs_html = "<ul style='margin: 10px 0; padding-left: 20px;'>"
+    for doc in docs_requeridos:
+        docs_html += f"<li style='margin: 5px 0;'>{doc}</li>"
+    docs_html += "</ul>"
+    
+    asunto = f"🔄 Cambio de Tipo de Incapacidad - {serial}"
+    
+    cuerpo = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+            <h2 style="color: #f59e0b;">🔄 Actualización de Tipo de Incapacidad</h2>
+            
+            <p>Hola <strong>{nombre}</strong>,</p>
+            
+            <p>Hemos actualizado el tipo de tu incapacidad <strong>{serial}</strong>:</p>
+            
+            <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 0;">
+                    <strong>Tipo anterior:</strong> {tipo_ant_nombre}<br>
+                    <strong>Nuevo tipo:</strong> {tipo_nuevo_nombre}
+                </p>
+            </div>
+            
+            <p>Debido a este cambio, los documentos requeridos son:</p>
+            
+            {docs_html}
+            
+            <div style="background-color: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #1e40af;">📝 Qué debes hacer:</h3>
+                <ol style="margin: 10px 0; padding-left: 20px;">
+                    <li style="margin: 5px 0;">Revisa la nueva lista de documentos</li>
+                    <li style="margin: 5px 0;">Prepara TODOS los documentos solicitados</li>
+                    <li style="margin: 5px 0;">Ingresa al portal con tu cédula</li>
+                    <li style="margin: 5px 0;">Completa la incapacidad subiendo los documentos</li>
+                </ol>
+            </div>
+            
+            <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 12px;">
+                Este es un correo automático del sistema de gestión de incapacidades.<br>
+                No respondas a este mensaje.
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    send_html_email(email, asunto, cuerpo)
     tipo_map = {
         'maternity': TipoIncapacidad.MATERNIDAD,
         'paternidad': TipoIncapacidad.PATERNIDAD,
