@@ -20,6 +20,8 @@ def enviar_a_n8n(
     html_content: str, 
     cc_email: Optional[str] = None,
     correo_bd: Optional[str] = None,
+    whatsapp: Optional[str] = None,
+    whatsapp_message: Optional[str] = None,
     adjuntos_base64: Optional[List[dict]] = None
 ) -> bool:
     """
@@ -89,15 +91,18 @@ def enviar_a_n8n(
         "subject": subject,
         "html_content": html_content,
         "cc_email": ",".join(cc_list) if cc_list else "",
+        "whatsapp": whatsapp or "",
+        "whatsapp_message": whatsapp_message or "",
         "adjuntos": adjuntos_base64 if adjuntos_base64 else []
     }
     
     try:
         print(f"📤 Enviando a n8n:")
-        print(f"   TO: {email}")
-        print(f"   CC: {', '.join(cc_list) if cc_list else 'ninguno'}")
-        print(f"   Serial: {serial}")
-        print(f"   Subject: {subject}")
+        print(f"   📧 TO: {email}")
+        print(f"   📧 CC: {', '.join(cc_list) if cc_list else 'ninguno'}")
+        print(f"   📱 WhatsApp: {whatsapp or 'ninguno'}")
+        print(f"   📋 Serial: {serial}")
+        print(f"   📝 Subject: {subject}")
         
         response = requests.post(
             N8N_WEBHOOK_URL,

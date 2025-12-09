@@ -231,7 +231,7 @@ def get_current_quinzena():
     return f"primera quincena de {mes_nombre}" if today.day <= 15 else f"segunda quincena de {mes_nombre}"
 
 def send_html_email(to_email: str, subject: str, html_body: str, caso=None):
-    """Envía email a través de N8N con soporte para copias"""
+    """Envía email + WhatsApp a través de N8N con soporte para copias"""
     tipo_map = {
         'Confirmación': 'confirmacion',
         'Copia': 'confirmacion',
@@ -249,26 +249,39 @@ def send_html_email(to_email: str, subject: str, html_body: str, caso=None):
             tipo_notificacion = value
             break
     
-    # ✅ OBTENER EMAIL DE COPIA DE LA EMPRESA
+    # ✅ OBTENER EMAIL DE COPIA DE LA EMPRESA Y TELÉFONO
     cc_email = None
+    whatsapp = None
+    
     if caso:
         if hasattr(caso, 'empresa') and caso.empresa:
             if hasattr(caso.empresa, 'email_copia') and caso.empresa.email_copia:
                 cc_email = caso.empresa.email_copia
                 print(f"📧 CC configurado: {cc_email} ({caso.empresa.nombre})")
+        
+        # ✅ OBTENER TELÉFONO DEL FORMULARIO (prioritario)
+        if hasattr(caso, 'telefono_form') and caso.telefono_form:
+            whatsapp = caso.telefono_form
+            print(f"📱 WhatsApp desde formulario: {whatsapp}")
     
-    resultado = enviar_a_n8n(
+ resultado = enviar_a_n8n(
         tipo_notificacion=tipo_notificacion,
         email=to_email,
         serial=caso.serial if caso else 'AUTO',
         subject=subject,
         html_content=html_body,
         cc_email=cc_email,
+        correo_bd=correo_bd,
+        whatsapp=whatsapp,
+        whatsapp_message=None,
         adjuntos_base64=[]
     )
     
     if resultado:
-        print(f"✅ Email enviado via N8N: {to_email} (CC: {cc_email or 'ninguno'})")
+        canales = "Email"
+        if whatsapp:
+            canales += " + WhatsApp"
+        print(f"✅ {canales} enviado: {to_email} (CC: {cc_email or 'ninguno'}, Tel: {whatsapp or 'ninguno'})")
         return True, None
     else:
         print(f"❌ Error enviando via N8N")
@@ -1127,108 +1140,7 @@ async def check_drive_token_health():
         
     except Exception as e:
         return {"status": "error", "error": str(e)}
-@app.post("/validador/casos/{serial}/cambiar-tipo")
-async def cambiar_tipo_incapacidad(
-    serial: str,
-    request: Request,
-    token: str = Header(None, alias="X-Admin-Token"),
-    db: Session = Depends(get_db)
-):
-    """
-    Permite al validador cambiar el tipo de incapacidad
-    cuando detecta que se clasificó mal
-    """
-    # 1. Validar token
-    from app.validador import verificar_token_admin
-    verificar_token_admin(token)
-    
-    # 2. Leer datos del body
-    try:
-        datos = await request.json()
-        nuevo_tipo = datos.get('nuevo_tipo')
-    except:
-        raise HTTPException(status_code=400, detail="Datos inválidos")
-    
-    # 3. Validar tipo
-    tipos_validos = ['maternity', 'paternity', 'general', 'traffic', 'labor']
-    if nuevo_tipo not in tipos_validos:
-        raise HTTPException(status_code=400, detail=f"Tipo inválido. Usa: {', '.join(tipos_validos)}")
-    
-    # 4. Buscar caso en BD
-    caso = db.query(Case).filter(Case.serial == serial).first()
-    
-    if not caso:
-        raise HTTPException(status_code=404, detail="Caso no encontrado")
-    
-    # 5. Guardar tipo anterior y actualizar
-    tipo_anterior = caso.tipo.value if caso.tipo else 'desconocido'
-    
-    # Mapear tipo nuevo a TipoIncapacidad enum
-    tipo_map = {
-        'maternity': TipoIncapacidad.MATERNIDAD,
-        'paternity': TipoIncapacidad.PATERNIDAD,
-        'general': TipoIncapacidad.ENFERMEDAD_GENERAL,
-        'traffic': TipoIncapacidad.ACCIDENTE_TRANSITO,
-        'labor': TipoIncapacidad.ENFERMEDAD_LABORAL
-    }
-    
-    caso.tipo = tipo_map[nuevo_tipo]
-    caso.subtipo = nuevo_tipo
-    
-    # Actualizar metadata
-    if not caso.metadata_form:
-        caso.metadata_form = {}
-    
-    caso.metadata_form['tipo_anterior'] = tipo_anterior
-    caso.metadata_form['cambio_tipo_fecha'] = datetime.now().isoformat()
-    caso.metadata_form['cambio_tipo_validador'] = "sistema"
-    
-    # 6. Cambiar estado a INCOMPLETA (requiere nuevos documentos)
-    caso.estado = EstadoCaso.INCOMPLETA
-    caso.bloquea_nueva = True
-    caso.updated_at = datetime.utcnow()
-    
-    db.commit()
-    
-    # 7. Obtener nuevos documentos requeridos
-    docs_requeridos = obtener_documentos_requeridos(nuevo_tipo)
-    
-    # 8. Enviar email al empleado
-    empleado_email = caso.email_form
-    empleado_nombre = caso.empleado.nombre if caso.empleado else 'Empleado'
-    
-    if empleado_email:
-        try:
-            enviar_email_cambio_tipo(
-                email=empleado_email,
-                nombre=empleado_nombre,
-                serial=serial,
-                tipo_anterior=tipo_anterior,
-                tipo_nuevo=nuevo_tipo,
-                docs_requeridos=docs_requeridos
-            )
-        except Exception as e:
-            print(f"Error enviando email: {e}")
-    
-    # 9. Registrar evento
-    from app.validador import registrar_evento
-    registrar_evento(
-        db, caso.id,
-        "cambio_tipo",
-        actor="Validador",
-        estado_anterior=tipo_anterior,
-        estado_nuevo=nuevo_tipo,
-        motivo=f"Tipo cambiado de {tipo_anterior} a {nuevo_tipo}",
-        metadata={'docs_requeridos': docs_requeridos}
-    )
-    
-    return {
-        "mensaje": f"Tipo cambiado exitosamente de {tipo_anterior} a {nuevo_tipo}",
-        "tipo_anterior": tipo_anterior,
-        "tipo_nuevo": nuevo_tipo,
-        "documentos_requeridos": docs_requeridos,
-        "email_enviado": empleado_email is not None
-    }
+
 
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):

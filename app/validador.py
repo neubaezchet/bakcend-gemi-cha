@@ -94,7 +94,7 @@ def registrar_evento(db: Session, case_id: int, accion: str, actor: str = "Siste
 
 def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[], caso=None, db=None):
     """
-    ✅ Sistema profesional de envío con copias por empresa Y empleado
+    ✅ Sistema profesional de envío con copias por empresa, empleado Y WhatsApp
     """
     import base64
     from app.n8n_notifier import enviar_a_n8n
@@ -133,9 +133,10 @@ def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[], c
             tipo_notificacion = value
             break
     
-    # ✅ OBTENER EMAILS DE COPIA
+    # ✅ OBTENER EMAILS DE COPIA Y TELÉFONO
     cc_empresa = None
     correo_bd = None
+    whatsapp = None
     
     print(f"🔍 DEBUG enviar_email_con_adjuntos:")
     print(f"   to_email: {to_email}")
@@ -184,8 +185,15 @@ def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[], c
     else:
         print(f"   ✗ Caso es None")
     
+    # ✅ OBTENER TELÉFONO
+    if caso:
+        if hasattr(caso, 'telefono_form') and caso.telefono_form:
+            whatsapp = caso.telefono_form
+            print(f"   ✅ WhatsApp configurado: {whatsapp}")
+    
     print(f"   📧 cc_empresa final: {cc_empresa}")
     print(f"   📧 correo_bd final: {correo_bd}")
+    print(f"   📱 whatsapp final: {whatsapp}")
     
     # Enviar a n8n
     resultado = enviar_a_n8n(
@@ -196,6 +204,8 @@ def enviar_email_con_adjuntos(to_email, subject, html_body, adjuntos_paths=[], c
         html_content=html_body,
         cc_email=cc_empresa,
         correo_bd=correo_bd,
+        whatsapp=whatsapp,
+        whatsapp_message=None,
         adjuntos_base64=adjuntos_base64 if adjuntos_base64 else []
     )
     
