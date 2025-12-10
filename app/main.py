@@ -252,6 +252,7 @@ def send_html_email(to_email: str, subject: str, html_body: str, caso=None):
     # ✅ OBTENER EMAIL DE COPIA DE LA EMPRESA Y TELÉFONO
     cc_email = None
     whatsapp = None
+    correo_bd = None
     
     if caso:
         if hasattr(caso, 'empresa') and caso.empresa:
@@ -263,8 +264,48 @@ def send_html_email(to_email: str, subject: str, html_body: str, caso=None):
         if hasattr(caso, 'telefono_form') and caso.telefono_form:
             whatsapp = caso.telefono_form
             print(f"📱 WhatsApp desde formulario: {whatsapp}")
+        
+        # ✅ OBTENER CORREO DE BD
+        if hasattr(caso, 'empleado') and caso.empleado:
+            if hasattr(caso.empleado, 'correo') and caso.empleado.correo:
+                correo_bd = caso.empleado.correo
+                print(f"📧 Correo BD: {correo_bd}")
     
+    resultado = enviar_a_n8n(
+```
+
+---
+
+## **📝 EXPLICACIÓN DE LOS CAMBIOS:**
+
+1. **Se agregó `correo_bd = None`** en la inicialización de variables
+2. **Se agregó el bloque completo** para obtener el correo del empleado de la BD
+3. **Se corrigió la indentación** de `resultado = enviar_a_n8n(` (quitando el espacio extra que causaba el error)
+
+---
+
+## **🔍 PASOS:**
+
+1. Abre `app/main.py` en Visual Studio Code
+2. Presiona **CTRL + H**
+3. Copia el texto de **BUSCAR** en la caja superior
+4. Copia el texto de **REEMPLAZAR** en la caja inferior
+5. Click en **"Replace"** (el botón con una flecha)
+6. Guarda el archivo (**CTRL + S**)
+
+---
+
+**⚠️ NOTA:** Si no encuentra el texto exacto, es porque hay más contenido después. En ese caso, busca solo esta línea problemática:
+
+### **BUSCAR SOLO:**
+```
  resultado = enviar_a_n8n(
+```
+(con el espacio extra al inicio)
+
+### **REEMPLAZAR POR:**
+```
+    resultado = enviar_a_n8n(
         tipo_notificacion=tipo_notificacion,
         email=to_email,
         serial=caso.serial if caso else 'AUTO',
