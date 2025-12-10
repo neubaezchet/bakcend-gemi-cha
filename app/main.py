@@ -293,42 +293,7 @@ def send_html_email(to_email: str, subject: str, html_body: str, caso=None):
     else:
         print(f"❌ Error enviando via N8N")
         return False, "Error N8N"
-    brevo_from_email = os.environ.get("BREVO_FROM_EMAIL", "notificaciones@smtp-brevo.com")
-    reply_to_email = os.environ.get("SMTP_EMAIL", "davidbaezaospino@gmail.com")
-
-    if not brevo_api_key:
-        print("Error: Falta BREVO_API_KEY")
-        return False, "Falta BREVO_API_KEY"
-
-    try:
-        print(f"📧 Enviando correo a {to_email}...")
-        
-        configuration = sib_api_v3_sdk.Configuration()
-        configuration.api_key['api-key'] = brevo_api_key
-        api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
-        
-        if isinstance(html_body, bytes): html_body = html_body.decode('utf-8')
-        if text_body and isinstance(text_body, bytes): text_body = text_body.decode('utf-8')
-        
-        send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
-            to=[{"email": to_email}],
-            sender={"name": "IncaBaeza", "email": brevo_from_email},
-            reply_to={"email": reply_to_email},
-            subject=subject,
-            html_content=html_body,
-            text_content=text_body
-        )
-        
-        api_response = api_instance.send_transac_email(send_smtp_email)
-        print(f"✅ Correo enviado (ID: {api_response.message_id})")
-        return True, None
-        
-    except ApiException as e:
-        print(f"❌ Error Brevo: {e}")
-        return False, str(e)
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        return False, str(e)
+    
 
 def enviar_email_cambio_tipo(email: str, nombre: str, serial: str, tipo_anterior: str, tipo_nuevo: str, docs_requeridos: list):
     """
@@ -452,45 +417,7 @@ def verificar_bloqueo_empleado(
     cedula: str,
     db: Session = Depends(get_db)
 ):
-    """
-    Verifica si el empleado tiene casos pendientes que bloquean nuevos envíos
-    """
     
-    # Buscar casos incompletos que bloquean
-    caso_bloqueante = db.query(Case).filter(
-        Case.cedula == cedula,
-        Case.estado.in_([
-            EstadoCaso.INCOMPLETA,
-            EstadoCaso.ILEGIBLE,
-            EstadoCaso.INCOMPLETA_ILEGIBLE
-        ]),
-        Case.bloquea_nueva == True
-    ).first()
-    
-    if caso_bloqueante:
-        # Obtener checks seleccionados (si existen)
-        checks_faltantes = []
-        if hasattr(caso_bloqueante, 'metadata_form') and caso_bloqueante.metadata_form:
-            checks_faltantes = caso_bloqueante.metadata_form.get('checks_seleccionados', [])
-        
-        return {
-            "bloqueado": True,
-            "mensaje": f"Tienes una incapacidad pendiente de completar",
-            "caso_pendiente": {
-                "serial": caso_bloqueante.serial,
-                "tipo": caso_bloqueante.tipo.value if caso_bloqueante.tipo else "General",
-                "estado": caso_bloqueante.estado.value,
-                "fecha_envio": caso_bloqueante.created_at.strftime("%d/%m/%Y"),
-                "motivo": caso_bloqueante.diagnostico or "Documentos faltantes o ilegibles",
-                "checks_faltantes": checks_faltantes,
-                "drive_link": caso_bloqueante.drive_link
-            }
-        }
-    
-    return {
-        "bloqueado": False,
-        "mensaje": "Puedes continuar con el envío"
-    }
 
 
     """
@@ -1003,7 +930,7 @@ async def subir_incapacidad(
             "case_id": nuevo_caso.id,
             "link_pdf": link_pdf,
             "archivos_combinados": len(original_filenames),
-            "correos_enviados": emails_to_send
+            "correos_enviados": emails_enviados
         }
     
     else:
@@ -1148,9 +1075,6 @@ async def check_drive_token_health():
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-
-@app.get("/health")
-def health_check(db: Session = Depends(get_db)):
 @app.post("/validador/casos/{serial}/cambiar-tipo")
 async def cambiar_tipo_incapacidad(
     serial: str,
@@ -1254,22 +1178,3 @@ async def cambiar_tipo_incapacidad(
         "email_enviado": empleado_email is not None
     }
 
-@app.get("/health")
-def health_check(db: Session = Depends(get_db)):
-    """Verifica estado de API y BD"""
-
-    try:
-        from sqlalchemy import text
-        db.execute(text("SELECT 1"))
-        return {
-            "status": "healthy",
-            "database": "connected",
-            "version": "2.0.0",
-            "cors_enabled": True
-        }
-    except Exception as e:
-        return JSONResponse(status_code=500, content={
-            "status": "unhealthy",
-            "database": "disconnected",
-            "error": str(e)
-        })
