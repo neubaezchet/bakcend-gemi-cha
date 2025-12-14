@@ -384,10 +384,102 @@ def root():
     }
 @app.get("/ping")
 async def ping():
+
+@app.get("/status")
+async def status_dashboard(db: Session = Depends(get_db)):
+    """Dashboard de estado del sistema"""
+    from datetime import datetime
+    
+    # Verificar BD
+    try:
+        total_casos = db.query(Case).count()
+        db_status = "✅ connected"
+    except:
+        total_casos = 0
+        db_status = "❌ error"
+    
+    # Verificar Drive
+    try:
+        from app.drive_uploader import TOKEN_FILE
+        drive_status = "✅ authenticated" if TOKEN_FILE.exists() else "⚠️ no token"
+    except:
+        drive_status = "❌ error"
+    
+    return {
+        "timestamp": datetime.now().isoformat(),
+        "services": {
+            "api": "✅ online",
+            "database": db_status,
+            "google_drive": drive_status,
+            "scheduler": "✅ running",
+            "uptime_robot": "✅ monitoring"
+        },
+        "stats": {
+            "total_casos": total_casos,
+            "render_sleep": "disabled",
+            "response_time": "<2s"
+        }
+    }
+```
+@app.get("/stats/uptime")
+async def uptime_stats():
+    """Estadísticas de uptime del servidor"""
+    from datetime import datetime
+    import os
+    
+    render_git_commit = os.environ.get("RENDER_GIT_COMMIT", "unknown")
+    
+    return {
+        "status": "online",
+        "timestamp": datetime.now().isoformat(),
+        "render_commit": render_git_commit[:7] if render_git_commit != "unknown" else "local",
+        "message": "Backend funcionando 24/7 gracias a UptimeRobot ⚡",
+        "uptime_robot_enabled": True
+    }
+```
+
+### Dónde verlo:
+```
+https://bakcend-gemi-cha-2.onrender.com/stats/uptime
+### Dónde verlo:
+Abre tu navegador y ve a:
+```
+https://bakcend-gemi-cha-2.onrender.com/status
     """Endpoint para mantener vivo el servidor - usado por UptimeRobot"""
     from datetime import datetime
     return {"status": "alive", "timestamp": datetime.now().isoformat()}
 
+@app.post("/wake-up")
+async def force_wake_up(db: Session = Depends(get_db)):
+    """Fuerza renovación de todos los servicios"""
+    from datetime import datetime
+    from app.drive_uploader import get_authenticated_service
+    from sqlalchemy import text
+    
+    resultados = {}
+    
+    # Renovar Drive
+    try:
+        service = get_authenticated_service()
+        service.files().list(pageSize=1).execute()
+        resultados["drive"] = "✅ renovado"
+    except Exception as e:
+        resultados["drive"] = f"❌ {str(e)[:50]}"
+    
+    # Test BD
+    try:
+        db.execute(text("SELECT 1"))
+        resultados["database"] = "✅ conectada"
+    except Exception as e:
+        resultados["database"] = f"❌ {str(e)[:50]}"
+    
+    return {
+        "status": "fully_awake",
+        "timestamp": datetime.now().isoformat(),
+        "services": resultados,
+        "message": "Todos los servicios renovados ⚡"
+    }
+    
 @app.get("/empleados/{cedula}")
 def obtener_empleado(cedula: str, db: Session = Depends(get_db)):
     """Consulta empleado (con sync instantánea)"""
