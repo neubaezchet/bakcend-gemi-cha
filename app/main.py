@@ -384,8 +384,11 @@ def root():
     }
 @app.get("/ping")
 async def ping():
-    """Endpoint para UptimeRobot"""
-    return {"status": "alive"}
+    """Endpoint para mantener vivo el servidor - usado por UptimeRobot"""
+    from datetime import datetime
+    return {"status": "alive", "timestamp": datetime.now().isoformat()}
+
+@app.get("/status")
 
 @app.get("/status")
 async def status_dashboard(db: Session = Depends(get_db)):
