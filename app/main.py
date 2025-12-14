@@ -389,8 +389,6 @@ async def ping():
     return {"status": "alive", "timestamp": datetime.now().isoformat()}
 
 @app.get("/status")
-
-@app.get("/status")
 async def status_dashboard(db: Session = Depends(get_db)):
     """Dashboard de estado del sistema"""
     from datetime import datetime
@@ -425,7 +423,7 @@ async def status_dashboard(db: Session = Depends(get_db)):
             "response_time": "<2s"
         }
     }
-```
+
 @app.get("/stats/uptime")
 async def uptime_stats():
     """Estadísticas de uptime del servidor"""
@@ -512,8 +510,6 @@ def verificar_bloqueo_empleado(
     db: Session = Depends(get_db)
 ):
     
-
-
     """
     Verifica si el empleado tiene casos pendientes que bloquean nuevos envíos
     """
