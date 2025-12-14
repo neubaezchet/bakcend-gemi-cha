@@ -384,6 +384,8 @@ def root():
     }
 @app.get("/ping")
 async def ping():
+    """Endpoint para UptimeRobot"""
+    return {"status": "alive"}
 
 @app.get("/status")
 async def status_dashboard(db: Session = Depends(get_db)):
@@ -436,15 +438,7 @@ async def uptime_stats():
         "message": "Backend funcionando 24/7 gracias a UptimeRobot ⚡",
         "uptime_robot_enabled": True
     }
-```
 
-### Dónde verlo:
-```
-https://bakcend-gemi-cha-2.onrender.com/stats/uptime
-### Dónde verlo:
-Abre tu navegador y ve a:
-```
-https://bakcend-gemi-cha-2.onrender.com/status
     """Endpoint para mantener vivo el servidor - usado por UptimeRobot"""
     from datetime import datetime
     return {"status": "alive", "timestamp": datetime.now().isoformat()}
@@ -479,7 +473,7 @@ async def force_wake_up(db: Session = Depends(get_db)):
         "services": resultados,
         "message": "Todos los servicios renovados ⚡"
     }
-    
+
 @app.get("/empleados/{cedula}")
 def obtener_empleado(cedula: str, db: Session = Depends(get_db)):
     """Consulta empleado (con sync instantánea)"""
