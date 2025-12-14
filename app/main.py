@@ -382,6 +382,11 @@ def root():
         "status": "online",
         "cors": "enabled"
     }
+@app.get("/ping")
+async def ping():
+    """Endpoint para mantener vivo el servidor - usado por UptimeRobot"""
+    from datetime import datetime
+    return {"status": "alive", "timestamp": datetime.now().isoformat()}
 
 @app.get("/empleados/{cedula}")
 def obtener_empleado(cedula: str, db: Session = Depends(get_db)):
