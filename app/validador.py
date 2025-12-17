@@ -1355,7 +1355,124 @@ async def obtener_checks_disponibles_endpoint(
 @router.post("/casos/{serial}/editar-pdf")
 async def editar_pdf_caso(
     serial: str,
-    operaciones: dict,
+    request: Request,
+    token: str = Header(None, alias="X-Admin-Token"),
+    db: Session = Depends(get_db)
+):
+    """
+    Edita el PDF de un caso con múltiples operaciones
+    
+    Operaciones soportadas:
+    - enhance_quality: {pages: [0, 1, 2]}
+    - rotate: [{page_num: 0, angle: 90}]
+    - aplicar_filtro: {page_num: 0, filtro: 'grayscale'}
+    - crop_auto: [{page_num: 0, margin: 10}]
+    - deskew: {page_num: 0}
+    """
+    from app.pdf_editor import PDFEditor
+    import cv2
+    import numpy as np
+    from app.validador import verificar_token_admin
+    
+    verificar_token_admin(token)
+    
+    try:
+        datos = await request.json()
+        operaciones = datos.get('operaciones', {})
+    except:
+        raise HTTPException(status_code=400, detail="Datos inválidos")
+    
+    caso = db.query(Case).filter(Case.serial == serial).first()
+    if not caso or not caso.drive_link:
+        raise HTTPException(status_code=404, detail="Caso o PDF no encontrado")
+    
+    # Extraer file_id y descargar PDF
+    if '/file/d/' in caso.drive_link:
+        file_id = caso.drive_link.split('/file/d/')[1].split('/')[0]
+    elif 'id=' in caso.drive_link:
+        file_id = caso.drive_link.split('id=')[1].split('&')[0]
+    else:
+        raise HTTPException(status_code=400, detail="Link de Drive inválido")
+    
+    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    response = requests.get(download_url)
+    
+    if response.status_code != 200:
+        raise HTTPException(status_code=500, detail="Error descargando PDF")
+    
+    temp_input = os.path.join(tempfile.gettempdir(), f"{serial}_original.pdf")
+    temp_output = os.path.join(tempfile.gettempdir(), f"{serial}_edited.pdf")
+    
+    with open(temp_input, 'wb') as f:
+        f.write(response.content)
+    
+    try:
+        editor = PDFEditor(temp_input)
+        
+        # ✅ PROCESAR OPERACIONES
+        for op_type, op_data in operaciones.items():
+            if op_type == 'enhance_quality':
+                for page_num in op_data.get('pages', []):
+                    editor.enhance_page_quality(page_num)
+            
+            elif op_type == 'rotate':
+                for item in op_data:
+                    editor.rotate_page(item['page_num'], item['angle'])
+            
+            elif op_type == 'aplicar_filtro':
+                editor.aplicar_filtro_imagen(op_data['page_num'], op_data['filtro'])
+            
+            elif op_type == 'crop_auto':
+                for item in op_data:
+                    editor.auto_crop_page(item['page_num'], item.get('margin', 10))
+            
+            elif op_type == 'deskew':
+                page_num = op_data.get('page_num', 0)
+                page = editor.doc[page_num]
+                mat = fitz.Matrix(2.0, 2.0)
+                pix = page.get_pixmap(matrix=mat)
+                img_array = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+                
+                deskewed = editor.auto_deskew(img_array)
+                
+                from PIL import Image
+                img_pil = Image.fromarray(deskewed)
+                img_bytes = io.BytesIO()
+                img_pil.save(img_bytes, format='PNG')
+                img_bytes.seek(0)
+                
+                rect = page.rect
+                page.clean_contents()
+                page.insert_image(rect, stream=img_bytes.getvalue())
+        
+        editor.save_changes(temp_output)
+        
+        # Subir a Drive
+        from app.drive_manager import CaseFileOrganizer
+        organizer = CaseFileOrganizer()
+        nuevo_link = organizer.actualizar_pdf_editado(caso, temp_output)
+        
+        if nuevo_link:
+            caso.drive_link = nuevo_link
+            db.commit()
+        
+        os.remove(temp_input)
+        os.remove(temp_output)
+        
+        return {
+            "status": "ok",
+            "serial": serial,
+            "nuevo_link": nuevo_link,
+            "modificaciones": editor.get_modifications_log(),
+            "mensaje": "PDF editado y actualizado en Drive"
+        }
+    
+    except Exception as e:
+        if os.path.exists(temp_input):
+            os.remove(temp_input)
+        if os.path.exists(temp_output):
+            os.remove(temp_output)
+        raise HTTPException(status_code=500, detail=f"Error editando PDF: {str(e)}")
     db: Session = Depends(get_db),
     _: bool = Depends(verificar_token_admin)
 ):

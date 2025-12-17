@@ -277,7 +277,69 @@ class PDFEditor
         Retorna el log de modificaciones realizadas
         return self.modifications
 
-
+def aplicar_filtro_imagen(self, page_num, filtro_tipo):
+        """
+        Aplica filtros de imagen a una página específica
+        filtro_tipo: 'grayscale', 'contrast', 'brightness', 'sharpen'
+        """
+        page = self.doc[page_num]
+        
+        # Renderizar página a imagen de alta resolución
+        mat = fitz.Matrix(3.0, 3.0)
+        pix = page.get_pixmap(matrix=mat)
+        
+        # Convertir a numpy array
+        img_array = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+        
+        # Aplicar filtro según tipo
+        if filtro_tipo == 'grayscale':
+            if len(img_array.shape) == 3:
+                filtered = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
+                filtered = cv2.cvtColor(filtered, cv2.COLOR_GRAY2BGR)
+            else:
+                filtered = img_array
+        
+        elif filtro_tipo == 'contrast':
+            # Mejora de contraste adaptativa
+            lab = cv2.cvtColor(img_array, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+            l = clahe.apply(l)
+            filtered = cv2.merge([l, a, b])
+            filtered = cv2.cvtColor(filtered, cv2.COLOR_LAB2BGR)
+        
+        elif filtro_tipo == 'brightness':
+            # Aumentar brillo
+            hsv = cv2.cvtColor(img_array, cv2.COLOR_BGR2HSV)
+            h, s, v = cv2.split(hsv)
+            v = cv2.add(v, 30)
+            filtered = cv2.merge([h, s, v])
+            filtered = cv2.cvtColor(filtered, cv2.COLOR_HSV2BGR)
+        
+        elif filtro_tipo == 'sharpen':
+            # Aplicar enfoque
+            kernel = np.array([[-1,-1,-1],
+                              [-1, 9,-1],
+                              [-1,-1,-1]])
+            filtered = cv2.filter2D(img_array, -1, kernel)
+        
+        else:
+            filtered = img_array
+        
+        # Convertir a PIL y actualizar página
+        filtered_pil = Image.fromarray(filtered)
+        
+        img_bytes = io.BytesIO()
+        filtered_pil.save(img_bytes, format='PNG')
+        img_bytes.seek(0)
+        
+        # Reemplazar página
+        rect = page.rect
+        page.clean_contents()
+        page.insert_image(rect, stream=img_bytes.getvalue())
+        
+        self.modifications.append(f"Applied {filtro_tipo} filter to page {page_num}")
+        
 class PDFAttachmentManager
     Gestor de adjuntos para emails (imágenes recortadas, anotaciones)
     
