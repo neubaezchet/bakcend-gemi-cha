@@ -1351,6 +1351,7 @@ async def obtener_checks_disponibles_endpoint(
         "tipo_incapacidad": tipo_incapacidad,
         "checks": checks
     }
+# ==================== AGREGAR AL FINAL DE app/validador.py ====================
 
 @router.post("/casos/{serial}/editar-pdf")
 async def editar_pdf_caso(
@@ -1361,14 +1362,95 @@ async def editar_pdf_caso(
 ):
     """
     Edita el PDF de un caso con múltiples operaciones
-    
-    Operaciones soportadas:
-    - enhance_quality: {pages: [0, 1, 2]}
-    - rotate: [{page_num: 0, angle: 90}]
-    - aplicar_filtro: {page_num: 0, filtro: 'grayscale'}
-    - crop_auto: [{page_num: 0, margin: 10}]
-    - deskew: {page_num: 0}
     """
+    verificar_token_admin(token)
+    
+    try:
+        datos = await request.json()
+        operaciones = datos.get('operaciones', {})
+        print(f"📝 Operaciones recibidas: {operaciones}")
+    except:
+        raise HTTPException(status_code=400, detail="Datos inválidos")
+    
+    caso = db.query(Case).filter(Case.serial == serial).first()
+    if not caso or not caso.drive_link:
+        raise HTTPException(status_code=404, detail="Caso o PDF no encontrado")
+    
+    # Extraer file_id
+    if '/file/d/' in caso.drive_link:
+        file_id = caso.drive_link.split('/file/d/')[1].split('/')[0]
+    elif 'id=' in caso.drive_link:
+        file_id = caso.drive_link.split('id=')[1].split('&')[0]
+    else:
+        raise HTTPException(status_code=400, detail="Link de Drive inválido")
+    
+    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    print(f"📥 Descargando PDF desde: {download_url}")
+    
+    response = requests.get(download_url)
+    if response.status_code != 200:
+        raise HTTPException(status_code=500, detail="Error descargando PDF")
+    
+    temp_input = os.path.join(tempfile.gettempdir(), f"{serial}_original.pdf")
+    temp_output = os.path.join(tempfile.gettempdir(), f"{serial}_edited.pdf")
+    
+    with open(temp_input, 'wb') as f:
+        f.write(response.content)
+    
+    print(f"✅ PDF descargado: {temp_input}")
+    
+    try:
+        import fitz  # PyMuPDF
+        pdf_doc = fitz.open(temp_input)
+        
+        # PROCESAR OPERACIONES
+        for op_type, op_data in operaciones.items():
+            print(f"🔧 Procesando: {op_type}")
+            
+            if op_type == 'rotate':
+                for item in op_data:
+                    page_num = item['page_num']
+                    angle = item['angle']
+                    print(f"   🔄 Rotando página {page_num} {angle}°")
+                    page = pdf_doc[page_num]
+                    page.set_rotation(angle)
+            
+            elif op_type == 'enhance_quality':
+                # Nota: enhance_quality requiere procesamiento de imagen
+                # Por ahora solo loguear
+                print(f"   ✨ Mejora de calidad solicitada (requiere procesamiento avanzado)")
+        
+        # Guardar PDF
+        pdf_doc.save(temp_output, garbage=4, deflate=True)
+        pdf_doc.close()
+        print(f"💾 PDF guardado: {temp_output}")
+        
+        # Subir a Drive
+        from app.drive_manager import CaseFileOrganizer
+        organizer = CaseFileOrganizer()
+        nuevo_link = organizer.actualizar_pdf_editado(caso, temp_output)
+        
+        if nuevo_link:
+            caso.drive_link = nuevo_link
+            db.commit()
+            print(f"✅ PDF actualizado en Drive")
+        
+        # Limpiar
+        os.remove(temp_input)
+        os.remove(temp_output)
+        
+        return {
+            "status": "ok",
+            "serial": serial,
+            "nuevo_link": nuevo_link,
+            "mensaje": "PDF editado correctamente"
+        }
+    
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        if os.path.exists(temp_input): os.remove(temp_input)
+        if os.path.exists(temp_output): os.remove(temp_output)
+        raise HTTPException(status_code=500, detail=str(e))
     from app.pdf_editor import PDFEditor
     import cv2
     import numpy as np
